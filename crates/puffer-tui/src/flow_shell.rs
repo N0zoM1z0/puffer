@@ -170,10 +170,17 @@ pub(crate) fn finalize_shell_shortcut_result(
         MessageRole::System
     };
     state.push_message(role, reply.clone());
-    session_store.append_event(
-        state.session.id,
-        TranscriptEvent::AssistantMessage { text: reply },
-    )?;
+    if result.success {
+        session_store.append_event(
+            state.session.id,
+            TranscriptEvent::AssistantMessage { text: reply },
+        )?;
+    } else {
+        session_store.append_event(
+            state.session.id,
+            TranscriptEvent::SystemMessage { text: reply },
+        )?;
+    }
     Ok(())
 }
 
