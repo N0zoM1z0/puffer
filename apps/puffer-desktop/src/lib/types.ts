@@ -24,6 +24,8 @@ export type DesktopPinState = {
   pinnedWorkspacePaths: string[];
 };
 
+export type AgentActivityStatus = "idle" | "running" | "awaiting" | "review";
+
 export type SessionListItem = {
   id: string;
   displayName: string | null;
@@ -34,6 +36,7 @@ export type SessionListItem = {
   updatedAtMs: number;
   createdAtMs: number;
   eventCount: number;
+  activityStatus: AgentActivityStatus;
   slug: string | null;
   tags: string[];
   note: string | null;

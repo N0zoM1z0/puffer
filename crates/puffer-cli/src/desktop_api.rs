@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 use crate::cli_args::DesktopApiCommand;
+use crate::desktop_activity::session_activity_status;
 use crate::desktop_api_types::{
     AgentDiffDto, AgentDiffEntryDto, AgentDiffFileDto, AuthProviderStatusDto, DiffSummaryDto,
     DivergenceReportDto, ExternalCredentialDto, FolderGroupDto, ProviderSummaryDto,
@@ -174,6 +175,7 @@ pub(crate) fn list_grouped_sessions(session_store: &SessionStore) -> Result<Vec<
     let sessions = session_store.list_sessions()?;
     let mut groups = BTreeMap::<String, Vec<SessionListItemDto>>::new();
     for session in sessions {
+        let record = session_store.load_session(session.id)?;
         let folder_path = session_group_root(&session.cwd).display().to_string();
         groups
             .entry(folder_path.clone())
@@ -194,6 +196,7 @@ pub(crate) fn list_grouped_sessions(session_store: &SessionStore) -> Result<Vec<
                 updated_at_ms: session.updated_at_ms,
                 created_at_ms: session.created_at_ms,
                 event_count: session.event_count,
+                activity_status: session_activity_status(&record.events).to_string(),
                 slug: session.slug.clone(),
                 tags: session.tags.clone(),
                 note: session.note.clone(),
@@ -264,6 +267,8 @@ pub(crate) fn load_session_detail(
         folder_path,
         updated_at_ms: record.metadata.updated_at_ms,
         created_at_ms: record.metadata.created_at_ms,
+        event_count: record.events.len(),
+        activity_status: session_activity_status(&record.events).to_string(),
         slug: record.metadata.slug.clone(),
         tags: record.metadata.tags.clone(),
         note: record.metadata.note.clone(),
