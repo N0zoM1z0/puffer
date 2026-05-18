@@ -775,6 +775,7 @@ export async function writeRemoteFile(
 import {
   canInvokeTauri,
   canReachDaemon,
+  configuredBrowserRemoteDaemonHandshake,
   ensureLocalDaemonClient,
   switchDaemonClient
 } from "./daemonClient";
@@ -917,7 +918,12 @@ export async function connectSshDaemon(
   options: { remoteBinary?: string; remoteWorkspace?: string } = {}
 ): Promise<{ url: string; token: string; workspaceRoot: string; protocolVersion: string }> {
   if (!canInvokeTauri()) {
-    throw new Error("SSH remote daemon requires the Tauri desktop shell.");
+    const browserHandshake = configuredBrowserRemoteDaemonHandshake();
+    if (!browserHandshake) {
+      throw new Error("SSH remote daemon requires the Tauri desktop shell.");
+    }
+    await switchDaemonClient(browserHandshake);
+    return browserHandshake;
   }
   const handshake = await invoke<{
     url: string;
