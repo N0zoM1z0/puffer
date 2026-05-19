@@ -902,6 +902,71 @@ test("Browser pane resets daemon tabs when switching agents", async ({ page }) =
   );
 });
 
+test("late Browser new-tab failures do not pollute a different agent", async ({ page }) => {
+  const daemon = new FakeDaemon({
+    sessions: [
+      {
+        sessionId: "session-alpha-browser",
+        displayName: "Alpha browser",
+        title: "Alpha browser",
+        cwd: "/tmp/puffer-alpha",
+        folderPath: "/tmp/puffer-alpha",
+        updatedAtMs: Date.now(),
+        createdAtMs: Date.now() - 60_000,
+        timeline: []
+      },
+      {
+        sessionId: "session-beta-browser",
+        displayName: "Beta browser",
+        title: "Beta browser",
+        cwd: "/tmp/puffer-beta",
+        folderPath: "/tmp/puffer-beta",
+        updatedAtMs: Date.now() - 1_000,
+        createdAtMs: Date.now() - 120_000,
+        timeline: []
+      }
+    ]
+  });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page
+    .locator(".pf-sidebar-agents-list")
+    .getByRole("button", { name: /^Alpha browser\b/ })
+    .click();
+  await openAgentPanel(page, "Browser");
+  await daemon.waitForRequest("browser_open", (request) =>
+    request.params.sessionId === "session-alpha-browser:browser:tab-1"
+  );
+
+  daemon.delayResponse(
+    "browser_agent",
+    (request) =>
+      request.params.action === "open" &&
+      request.params.sessionId === "session-alpha-browser",
+    180
+  );
+  daemon.failNext("browser_agent", "alpha tab open failed");
+  await page.getByRole("button", { name: "New tab" }).click();
+  await daemon.waitForRequest("browser_agent", (request) =>
+    request.params.action === "open" &&
+    request.params.sessionId === "session-alpha-browser"
+  );
+
+  await page
+    .locator(".pf-sidebar-agents-list")
+    .getByRole("button", { name: /^Beta browser\b/ })
+    .click();
+  await daemon.waitForRequest("browser_open", (request) =>
+    request.params.sessionId === "session-beta-browser:browser:tab-1"
+  );
+  await page.waitForTimeout(220);
+
+  await expect(page.getByLabel("URL")).toHaveValue("about:blank");
+  await expect(page.locator(".pf-browser-status")).toHaveText("Connected");
+  await expect(page.locator(".pf-browser-error")).toHaveCount(0);
+});
+
 test("streamed assistant text stays visible when completion reload is stale", async ({ page }) => {
   const daemon = new FakeDaemon();
   await daemon.install(page);

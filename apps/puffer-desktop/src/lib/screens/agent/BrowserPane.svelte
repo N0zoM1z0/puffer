@@ -548,6 +548,7 @@
 
   async function addTab() {
     const size = measureViewport() ?? lastResize;
+    const targetSessionId = sessionId;
     const tabId = `tab-${nextTabNumber}`;
     nextTabNumber += 1;
     const requestedAtVersion = tabStateVersion;
@@ -555,7 +556,7 @@
     const openRequest = ++latestTabOpenRequest;
     try {
       const info = await browserTabOpen({
-        sessionId,
+        sessionId: targetSessionId,
         tabId,
         url: "about:blank",
         width: size.width,
@@ -565,7 +566,8 @@
       if (
         disposed ||
         requestedAtVersion !== tabStateVersion ||
-        requestedAtGeneration !== sessionGeneration
+        requestedAtGeneration !== sessionGeneration ||
+        activeRootSessionId !== targetSessionId
       ) return;
       const tab = tabFromInfo(info);
       tabCreationVersion += 1;
@@ -578,6 +580,11 @@
         void connectActiveTab(requestedAtGeneration);
       }
     } catch (err) {
+      if (
+        disposed ||
+        requestedAtGeneration !== sessionGeneration ||
+        activeRootSessionId !== targetSessionId
+      ) return;
       error = String(err);
     }
   }
