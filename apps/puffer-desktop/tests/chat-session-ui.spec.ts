@@ -1243,6 +1243,108 @@ test("model picker ignores stale provider selection responses", async ({ page })
   });
 });
 
+test("model picker keeps the current route after provider model load failure", async ({ page }) => {
+  const daemon = new FakeDaemon({
+    auth: [
+      {
+        providerId: "openai",
+        kind: "api_key",
+        email: null,
+        expiresAtMs: null,
+        scopes: [],
+        planType: null,
+        organizationName: null
+      },
+      {
+        providerId: "anthropic",
+        kind: "api_key",
+        email: null,
+        expiresAtMs: null,
+        scopes: [],
+        planType: null,
+        organizationName: null
+      }
+    ],
+    providers: [
+      {
+        id: "openai",
+        displayName: "OpenAI",
+        baseUrl: "",
+        defaultApi: "openai-responses",
+        modelCount: 1,
+        authModes: ["api_key"],
+        sourceKind: "test",
+        sourcePath: null
+      },
+      {
+        id: "anthropic",
+        displayName: "Anthropic",
+        baseUrl: "",
+        defaultApi: "anthropic-messages",
+        modelCount: 1,
+        authModes: ["api_key"],
+        sourceKind: "test",
+        sourcePath: null
+      }
+    ],
+    sessions: [
+      {
+        sessionId: "session-model-failure",
+        displayName: "Model failure",
+        title: "Model failure",
+        cwd: "/tmp/puffer",
+        folderPath: "/tmp/puffer",
+        updatedAtMs: baseTime,
+        createdAtMs: baseTime - 60_000,
+        eventCount: 0,
+        providerId: "openai",
+        modelId: "gpt-5",
+        timeline: []
+      }
+    ],
+    providerModels: {
+      openai: [
+        {
+          id: "gpt-5",
+          displayName: "GPT-5",
+          provider: "openai",
+          api: "openai-responses",
+          contextWindow: 128000,
+          maxOutputTokens: 4096,
+          supportsReasoning: false,
+          thinkingOptions: [],
+          defaultThinkingOptionId: null,
+          isDefault: true
+        }
+      ]
+    }
+  });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openSession(page, /Model failure/);
+  const trigger = page.locator(".pf-composer .trigger");
+  await expect(trigger).toContainText("gpt-5");
+  await trigger.click();
+  const picker = page.locator(".pf-composer .menu");
+  daemon.failNext("list_provider_models", "anthropic models unavailable");
+  await picker.getByRole("button", { name: "Anthropic" }).click();
+
+  await expect(picker.getByText("Some models failed to load")).toBeVisible();
+  await expect(trigger).toContainText("gpt-5");
+
+  await page.locator(".pf-composer textarea").fill("Use current model after failure");
+  await page.getByRole("button", { name: "Send" }).click();
+  const request = await daemon.waitForRequest(
+    "run_agent_turn",
+    (item) => item.params.message === "Use current model after failure"
+  );
+  expect(request.params).toMatchObject({
+    providerId: "openai",
+    modelId: "gpt-5"
+  });
+});
+
 test("Codex chat imports local credential before first turn", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(window, "__TAURI_INTERNALS__", {

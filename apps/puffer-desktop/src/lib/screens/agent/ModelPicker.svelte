@@ -122,7 +122,8 @@
     }
     if (generation !== providerSelectionGeneration) return;
     const defaultModel = models.find((model) => model.isDefault) ?? models[0];
-    onChange(providerId, defaultModel?.id ?? "");
+    if (!defaultModel) return;
+    onChange(providerId, defaultModel.id);
   }
 
   function toggle() {
