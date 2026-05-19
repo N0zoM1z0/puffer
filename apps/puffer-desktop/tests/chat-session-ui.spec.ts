@@ -666,7 +666,7 @@ test("composer sends selected thinking option with the turn request", async ({ p
     (item) => item.params.message === "Use high reasoning"
   );
   expect(request.params).toMatchObject({
-    providerId: "codex",
+    providerId: "openai",
     modelId: "test-model",
     thinkingOptionId: "high"
   });
@@ -730,7 +730,7 @@ test("composer sends fast mode and permission mode with the turn request", async
     (item) => item.params.message === "Use fast full access"
   );
   expect(request.params).toMatchObject({
-    providerId: "codex",
+    providerId: "openai",
     modelId: "gpt-5",
     fastMode: true,
     permissionMode: "full-access"

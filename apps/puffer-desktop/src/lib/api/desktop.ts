@@ -29,6 +29,7 @@ import {
   mockSessionDetailFor,
   mockSettingsSnapshot
 } from "../mockData";
+import { canonicalDaemonProviderId } from "../providerIds";
 
 type BackendFolderGroup = {
   folderId: string;
@@ -795,10 +796,11 @@ export async function createSession(
   modelId?: string;
 }> {
   const client = await ensureLocalDaemonClient();
+  const daemonProviderId = providerId ? canonicalDaemonProviderId(providerId) : providerId;
   return client.request(
     "create_session",
     Object.fromEntries(
-      Object.entries({ cwd, providerId, modelId }).filter(([, value]) => Boolean(value))
+      Object.entries({ cwd, providerId: daemonProviderId, modelId }).filter(([, value]) => Boolean(value))
     )
   );
 }
@@ -1058,18 +1060,22 @@ export async function runAgentTurn(
   message: string,
   options: AgentTurnOptions = {}
 ): Promise<string> {
+  const requestOptions = {
+    ...options,
+    providerId: options.providerId ? canonicalDaemonProviderId(options.providerId) : options.providerId
+  };
   try {
     const client = await ensureLocalDaemonClient();
     const result = await client.request<{ turnId: string }>("run_agent_turn", {
       sessionId,
       message,
-      ...options
+      ...requestOptions
     });
     return result.turnId;
   } catch (daemonError) {
     if (!canInvokeTauri()) throw daemonError;
     // Fallback: the in-process Tauri command (same behavior, just no daemon).
-    return invoke<string>("run_agent_turn", { sessionId, message, ...options });
+    return invoke<string>("run_agent_turn", { sessionId, message, ...requestOptions });
   }
 }
 

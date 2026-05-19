@@ -187,7 +187,7 @@
     const provider = settingsSnapshot?.providers?.find((entry) =>
       providerIdsEquivalent(entry.id, trimmed)
     );
-    return provider?.id ?? trimmed;
+    return canonicalDaemonProviderId(provider?.id ?? trimmed);
   }
 
   function normalizePermissionMode(value: string | null): AgentPermissionMode {
