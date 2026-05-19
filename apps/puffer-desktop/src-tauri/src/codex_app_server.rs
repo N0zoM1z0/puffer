@@ -78,15 +78,8 @@ impl AppServerClient {
         playwright_cdp_endpoint: Option<&str>,
     ) -> Result<Self> {
         let mut command_builder = Command::new(command);
-        let playwright_args = playwright_mcp_args_config(playwright_cdp_endpoint)?;
         command_builder
-            .args([
-                "-c".to_string(),
-                "mcp_servers.playwright.command=\"npx\"".to_string(),
-                "-c".to_string(),
-                playwright_args,
-                "app-server".to_string(),
-            ])
+            .args(app_server_args(playwright_cdp_endpoint)?)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -1157,6 +1150,22 @@ fn playwright_mcp_args_config(cdp_endpoint: Option<&str>) -> Result<String> {
     ))
 }
 
+fn app_server_args(playwright_cdp_endpoint: Option<&str>) -> Result<Vec<String>> {
+    Ok(vec![
+        "--disable".to_string(),
+        "browser_use".to_string(),
+        "--disable".to_string(),
+        "browser_use_external".to_string(),
+        "--disable".to_string(),
+        "in_app_browser".to_string(),
+        "-c".to_string(),
+        "mcp_servers.playwright.command=\"npx\"".to_string(),
+        "-c".to_string(),
+        playwright_mcp_args_config(playwright_cdp_endpoint)?,
+        "app-server".to_string(),
+    ])
+}
+
 fn error_message(error: &Value) -> String {
     error
         .get("message")
@@ -1184,7 +1193,9 @@ fn turn_error_message(params: &Value) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{permission_preset, playwright_mcp_args_config, server_request_response};
+    use super::{
+        app_server_args, permission_preset, playwright_mcp_args_config, server_request_response,
+    };
     use serde_json::json;
 
     #[test]
@@ -1202,6 +1213,30 @@ mod tests {
         assert_eq!(
             config,
             "mcp_servers.playwright.args=[\"--yes\",\"@playwright/mcp@latest\",\"--cdp-endpoint=http://127.0.0.1:9222\"]"
+        );
+    }
+
+    #[test]
+    fn app_server_args_disable_native_browser_tools_and_enable_playwright_mcp() {
+        let args = app_server_args(Some("http://127.0.0.1:9222")).unwrap();
+        assert_eq!(
+            args,
+            vec![
+                "--disable",
+                "browser_use",
+                "--disable",
+                "browser_use_external",
+                "--disable",
+                "in_app_browser",
+                "-c",
+                "mcp_servers.playwright.command=\"npx\"",
+                "-c",
+                "mcp_servers.playwright.args=[\"--yes\",\"@playwright/mcp@latest\",\"--cdp-endpoint=http://127.0.0.1:9222\"]",
+                "app-server",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>()
         );
     }
 

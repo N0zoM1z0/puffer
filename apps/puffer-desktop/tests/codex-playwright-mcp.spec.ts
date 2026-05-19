@@ -5,13 +5,19 @@ import { expect, test } from "@playwright/test";
 const execFileAsync = promisify(execFile);
 
 const codexPlaywrightConfig = [
+  "--disable",
+  "browser_use",
+  "--disable",
+  "browser_use_external",
+  "--disable",
+  "in_app_browser",
   "-c",
   'mcp_servers.playwright.command="npx"',
   "-c",
   'mcp_servers.playwright.args=["--yes","@playwright/mcp@latest","--headless"]'
 ];
 
-test("Codex resolves the built-in Playwright MCP server", async () => {
+test("Codex resolves Playwright MCP with native browser tools disabled", async () => {
   test.setTimeout(60_000);
   const { stdout } = await execFileAsync("codex", ["mcp", "list", ...codexPlaywrightConfig], {
     timeout: 60_000
@@ -20,6 +26,7 @@ test("Codex resolves the built-in Playwright MCP server", async () => {
   expect(stdout).toContain("playwright");
   expect(stdout).toContain("npx");
   expect(stdout).toContain("@playwright/mcp");
+  expect(stdout).not.toContain("disabled");
 });
 
 test("Playwright can drive a browser page for agent browser workflows", async ({ page }) => {
