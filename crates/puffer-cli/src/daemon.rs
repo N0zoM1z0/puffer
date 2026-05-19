@@ -68,6 +68,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::{broadcast, Mutex as AsyncMutex};
+use url::Url;
 use uuid::Uuid;
 
 use crate::auth_credentials::{
@@ -1278,6 +1279,9 @@ fn handle_add_mcp_server(state: &DaemonState, params: &Value) -> Result<Value> {
     if transport != "stdio" && endpoint.is_empty() {
         anyhow::bail!("{transport} MCP servers require a URL");
     }
+    if transport != "stdio" {
+        validate_mcp_endpoint_url(transport, &endpoint)?;
+    }
     let inputs = state.build_runtime_inputs()?;
     if inputs
         .resources
@@ -1340,6 +1344,9 @@ fn handle_update_mcp_server(state: &DaemonState, params: &Value) -> Result<Value
     }
     if transport != "stdio" && endpoint.is_empty() {
         anyhow::bail!("{transport} MCP servers require a URL");
+    }
+    if transport != "stdio" {
+        validate_mcp_endpoint_url(transport, &endpoint)?;
     }
 
     let inputs = state.build_runtime_inputs()?;
@@ -1422,10 +1429,20 @@ fn handle_test_mcp_server(state: &DaemonState, params: &Value) -> Result<Value> 
         "stdio" if spec.target.trim().is_empty() => {
             anyhow::bail!("stdio MCP server `{id}` has no command")
         }
-        "sse" | "http" if spec.endpoint.trim().is_empty() && spec.target.trim().is_empty() => {
+        "sse" | "http" | "streamable-http"
+            if spec.endpoint.trim().is_empty() && spec.target.trim().is_empty() =>
+        {
             anyhow::bail!("{} MCP server `{id}` has no URL", spec.transport)
         }
-        "stdio" | "sse" | "http" | "streamable-http" => {}
+        "sse" | "http" | "streamable-http" => {
+            let endpoint = if spec.endpoint.trim().is_empty() {
+                spec.target.trim()
+            } else {
+                spec.endpoint.trim()
+            };
+            validate_mcp_endpoint_url(&spec.transport, endpoint)?;
+        }
+        "stdio" => {}
         other => anyhow::bail!("unsupported MCP transport `{other}`"),
     }
     Ok(json!({ "ok": true, "id": spec.id }))
@@ -1442,6 +1459,16 @@ fn validate_mcp_id(id: &str) -> Result<()> {
         anyhow::bail!(
             "MCP server id may only contain letters, numbers, dots, dashes, and underscores"
         );
+    }
+    Ok(())
+}
+
+fn validate_mcp_endpoint_url(transport: &str, endpoint: &str) -> Result<()> {
+    let Ok(url) = Url::parse(endpoint.trim()) else {
+        anyhow::bail!("{transport} MCP servers require an absolute http(s) URL")
+    };
+    if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+        anyhow::bail!("{transport} MCP servers require an absolute http(s) URL");
     }
     Ok(())
 }
@@ -3229,6 +3256,80 @@ mod tests {
         let error = handle_add_mcp_server(&state, &params).expect_err("duplicate rejected");
 
         assert!(error.to_string().contains("already exists"));
+    }
+
+    #[test]
+    fn mcp_server_add_and_update_reject_invalid_http_urls() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let workspace_root = temp.path().join("workspace");
+        let paths = ConfigPaths {
+            workspace_root: workspace_root.clone(),
+            workspace_config_dir: workspace_root.join(".puffer"),
+            user_config_dir: temp.path().join("home").join(".puffer"),
+            builtin_resources_dir: workspace_root.join("resources"),
+        };
+        ensure_workspace_dirs(&paths).expect("workspace dirs");
+        let state = DaemonState::load(
+            workspace_root.clone(),
+            paths.clone(),
+            "token".into(),
+            true,
+            false,
+            false,
+        )
+        .expect("daemon state");
+
+        let error = handle_add_mcp_server(
+            &state,
+            &json!({
+                "id": "bad-http",
+                "transport": "http",
+                "endpoint": "not-a-url",
+                "scope": "local",
+            }),
+        )
+        .expect_err("invalid http endpoint rejected");
+        assert!(
+            error
+                .to_string()
+                .contains("http MCP servers require an absolute http(s) URL"),
+            "{error:#}"
+        );
+        assert!(!paths
+            .workspace_config_dir
+            .join("resources/mcp_servers/bad-http.yaml")
+            .exists());
+
+        handle_add_mcp_server(
+            &state,
+            &json!({
+                "id": "github",
+                "transport": "stdio",
+                "target": "npx @modelcontextprotocol/server-github",
+                "scope": "local",
+            }),
+        )
+        .expect("add MCP server");
+        let error = handle_update_mcp_server(
+            &state,
+            &json!({
+                "originalId": "github",
+                "id": "github",
+                "transport": "sse",
+                "endpoint": "file:///tmp/socket",
+            }),
+        )
+        .expect_err("invalid sse endpoint rejected");
+        assert!(
+            error
+                .to_string()
+                .contains("sse MCP servers require an absolute http(s) URL"),
+            "{error:#}"
+        );
+        assert!(paths
+            .workspace_config_dir
+            .join("resources/mcp_servers/github.yaml")
+            .exists());
     }
 
     #[test]
