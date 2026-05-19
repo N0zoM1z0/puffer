@@ -88,6 +88,7 @@
   let searchMatchCount = $state(0);
   let searchIndex = $state(0);
   let searchMarks: HTMLElement[] = [];
+  let searchRefreshGeneration = 0;
 
   // Header identity comes straight from the live session record. No
   // local board persona — the daemon is the source of truth.
@@ -109,6 +110,23 @@
 
   $effect(() => {
     if (!editingTitle) titleDraft = displayName;
+  });
+
+  $effect(() => {
+    const sessionId = session?.id ?? null;
+    const activeTab = tab;
+    const activeSideTab = sideTab;
+    const visibleTimeline = timeline;
+    const visiblePermissions = pendingPermissions;
+    const visibleQuestions = pendingQuestions;
+    if (!searchOpen) return;
+    void sessionId;
+    void activeTab;
+    void activeSideTab;
+    void visibleTimeline;
+    void visiblePermissions;
+    void visibleQuestions;
+    void refreshSearch(false);
   });
 
   function inferStatusFromSession(d: SessionDetail | null): AgentStatus {
@@ -293,6 +311,7 @@
   }
 
   function closeSearch() {
+    searchRefreshGeneration += 1;
     searchOpen = false;
     searchQuery = "";
     searchMatchCount = 0;
@@ -361,7 +380,9 @@
   }
 
   async function refreshSearch(resetIndex: boolean) {
+    const generation = (searchRefreshGeneration += 1);
     await tick();
+    if (generation !== searchRefreshGeneration || !searchOpen) return;
     clearSearchMarks();
     const query = searchQuery.trim();
     if (!query) {

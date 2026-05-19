@@ -151,6 +151,62 @@ test("Agent detail find covers chat plus side panel diff without corrupting text
   await expect(page.locator(".pf-side-panel")).toHaveCount(0);
 });
 
+test("Agent detail find refreshes when switching sessions", async ({ page }) => {
+  const daemon = new FakeDaemon({
+    sessions: [
+      {
+        sessionId: "session-find-alpha",
+        displayName: "Find alpha",
+        title: "Find alpha",
+        cwd: "/tmp/puffer",
+        folderPath: "/tmp/puffer",
+        updatedAtMs: baseTime,
+        createdAtMs: baseTime - 60_000,
+        timeline: [
+          {
+            kind: "assistant_message",
+            id: "alpha-needle",
+            text: "The needle only exists in alpha.",
+            createdAtMs: baseTime - 50_000
+          }
+        ]
+      },
+      {
+        sessionId: "session-find-beta",
+        displayName: "Find beta",
+        title: "Find beta",
+        cwd: "/tmp/puffer",
+        folderPath: "/tmp/puffer",
+        updatedAtMs: baseTime - 1_000,
+        createdAtMs: baseTime - 120_000,
+        timeline: [
+          {
+            kind: "assistant_message",
+            id: "beta-text",
+            text: "Beta transcript has unrelated content.",
+            createdAtMs: baseTime - 90_000
+          }
+        ]
+      }
+    ]
+  });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openAgent(page, /Find alpha/);
+  await page.keyboard.press("Control+F");
+  const find = page.getByRole("search", { name: "Find in agent view" });
+  await find.getByRole("textbox").fill("needle");
+  await expect(page.locator("mark.pf-search-mark")).toHaveCount(1);
+  await expect(find.locator(".find-count")).toContainText("1 / 1");
+
+  await openAgent(page, /Find beta/);
+  await expect(page.getByText("Beta transcript has unrelated content.")).toBeVisible();
+  await expect(page.locator("mark.pf-search-mark")).toHaveCount(0);
+  await expect(find.locator(".find-count")).toContainText("0 results");
+  await expect(find.getByRole("button", { name: "Next match" })).toBeDisabled();
+});
+
 test("Side panel does not duplicate effectful Browser or Terminal panes", async ({ page }) => {
   const daemon = new FakeDaemon();
   await daemon.install(page);
