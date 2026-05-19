@@ -45,6 +45,18 @@ const canonicalProviderAuth = [
   }
 ];
 
+const githubOnlyAuth = [
+  {
+    providerId: "github",
+    kind: "oauth",
+    email: "tester@example.com",
+    expiresAtMs: null,
+    scopes: [],
+    planType: null,
+    organizationName: null
+  }
+];
+
 test("Files tab close button works from the keyboard", async ({ page }) => {
   const daemon = new FakeDaemon();
   await daemon.install(page);
@@ -314,6 +326,36 @@ test("connect project provider picker only shows authenticated providers", async
     cwd: "/tmp/puffer-new-project",
     providerId: "openai"
   });
+});
+
+test("connect project cannot start without an authenticated agent provider", async ({ page }) => {
+  const daemon = new FakeDaemon({
+    auth: githubOnlyAuth,
+    providers: [
+      {
+        id: "github",
+        displayName: "GitHub",
+        baseUrl: "",
+        defaultApi: "rest",
+        modelCount: 0,
+        authModes: ["oauth"],
+        sourceKind: "test",
+        sourcePath: null
+      }
+    ]
+  });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: "Connect project" }).click();
+  const dialog = page.getByRole("dialog", { name: "Connect project" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("Connect a Codex, OpenAI, Anthropic, Claude, or Puffer provider")).toBeVisible();
+
+  await dialog.getByLabel("Directory").fill("/tmp/puffer-new-project");
+  await expect(dialog.getByRole("button", { name: "Start agent" })).toBeDisabled();
+  await page.waitForTimeout(50);
+  expect(daemon.requests.filter((request) => request.method === "create_session")).toHaveLength(0);
 });
 
 test("connect project remote mode exposes binary override", async ({ page }) => {

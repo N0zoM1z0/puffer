@@ -132,6 +132,7 @@
 
   let canSubmit = $derived(() => {
     if (busy) return false;
+    if (providerOptions.length === 0) return false;
     if (mode === "local") return localDest.trim().length > 0;
     return sshTarget.trim().length > 0 && remoteDest.trim().length > 0;
   });
@@ -403,6 +404,11 @@
             </button>
           {/each}
         </div>
+        {#if providerOptions.length === 0}
+          <div class="pf-field-hint">
+            Connect a Codex, OpenAI, Anthropic, Claude, or Puffer provider before starting an agent.
+          </div>
+        {/if}
       </div>
 
       {#if mode === "local"}
