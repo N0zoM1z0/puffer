@@ -307,6 +307,10 @@ export class FakeDaemon {
     };
   }
 
+  setMcpServers(servers: JsonRecord[]): void {
+    this.mcpServers = servers;
+  }
+
   setAuthStatuses(auth: JsonRecord[]): void {
     this.authStatuses = auth;
   }

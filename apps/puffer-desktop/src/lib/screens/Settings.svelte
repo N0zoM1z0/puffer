@@ -85,6 +85,7 @@
   let mcpServers = $state<McpServerInfo[]>([]);
   let mcpLoaded = $state(false);
   let mcpLoading = $state(false);
+  let mcpLoadGeneration = 0;
   let mcpSaving = $state(false);
   let mcpError = $state<string | null>(null);
   let mcpSaved = $state<string | null>(null);
@@ -125,15 +126,22 @@
   }
 
   async function loadMcpServers() {
+    const generation = ++mcpLoadGeneration;
     mcpLoading = true;
     mcpError = null;
     try {
-      mcpServers = await listMcpServers();
+      const servers = await listMcpServers();
+      if (generation !== mcpLoadGeneration) return;
+      mcpServers = servers;
     } catch (e) {
-      mcpError = (e as Error).message ?? String(e);
+      if (generation === mcpLoadGeneration) {
+        mcpError = (e as Error).message ?? String(e);
+      }
     } finally {
-      mcpLoaded = true;
-      mcpLoading = false;
+      if (generation === mcpLoadGeneration) {
+        mcpLoaded = true;
+        mcpLoading = false;
+      }
     }
   }
 
@@ -350,6 +358,7 @@
     mcpServers = [];
     mcpLoaded = false;
     mcpLoading = false;
+    mcpLoadGeneration += 1;
     mcpError = null;
     mcpSaved = null;
 

@@ -271,6 +271,35 @@ test("MCP settings add server through the daemon", async ({ page }) => {
   await expect(page.getByText("Added github")).toBeVisible();
 });
 
+test("MCP settings ignore stale server loads after workspace refresh", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  daemon.delayResponse("list_mcp_servers", () => true, 260);
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "MCP Servers" }).click();
+  await daemon.waitForRequest("list_mcp_servers");
+  await expect(page.getByText("Loading MCP servers…")).toBeVisible();
+
+  daemon.setWorkspaceRoot("/tmp/puffer-next");
+  daemon.setMcpServers([]);
+  await page.getByRole("button", { name: "General" }).click();
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await expect(page.locator(".pf-settings-row").filter({ hasText: "Workspace root" })).toContainText(
+    "/tmp/puffer-next"
+  );
+
+  await page.getByRole("button", { name: "MCP Servers" }).click();
+  await expect.poll(() =>
+    daemon.requests.filter((request) => request.method === "list_mcp_servers").length
+  ).toBe(2);
+  await expect(page.getByText("No MCP servers configured.")).toBeVisible();
+  await page.waitForTimeout(320);
+  await expect(page.getByText("No MCP servers configured.")).toBeVisible();
+  await expect(page.locator(".pf-mcp-card .title").filter({ hasText: "Playwright" })).toHaveCount(0);
+});
+
 test("MCP settings do not reload-loop when no servers are configured", async ({ page }) => {
   const daemon = new FakeDaemon({ mcpServers: [] });
   await daemon.install(page);
