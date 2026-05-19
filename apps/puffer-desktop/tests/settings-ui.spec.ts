@@ -271,6 +271,23 @@ test("MCP settings add server through the daemon", async ({ page }) => {
   await expect(page.getByText("Added github")).toBeVisible();
 });
 
+test("MCP settings block duplicate server IDs before saving", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "MCP Servers" }).click();
+  await expect(page.locator(".pf-mcp-card .title").filter({ hasText: "Playwright" })).toBeVisible();
+
+  await page.getByLabel("ID").fill("playwright");
+  await page.getByLabel("Command").fill("npx");
+
+  await expect(page.getByText("MCP server ID already exists: playwright")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add server" })).toBeDisabled();
+  expect(daemon.requests.filter((request) => request.method === "add_mcp_server")).toHaveLength(0);
+});
+
 test("MCP settings ignore stale server loads after workspace refresh", async ({ page }) => {
   const daemon = new FakeDaemon();
   daemon.delayResponse("list_mcp_servers", () => true, 260);

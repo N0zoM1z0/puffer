@@ -98,6 +98,9 @@
     description: "",
     scope: "local" as "local" | "user"
   });
+  let mcpDuplicateId = $derived(
+    mcpServers.some((server) => server.id.toLowerCase() === mcpForm.id.trim().toLowerCase())
+  );
 
   // Per-provider model listings cached by providerId. Populated on demand
   // when the user expands the Providers pane.
@@ -699,6 +702,9 @@
       {#if mcpSaved}
         <div class="pf-settings-note">{mcpSaved}</div>
       {/if}
+      {#if mcpDuplicateId}
+        <div class="pf-settings-note warn">MCP server ID already exists: {mcpForm.id.trim()}</div>
+      {/if}
       <div class="pf-settings-note">
         {#if !daemonReachable}
           Preview mode — launch Puffer in the desktop app to see your workspace's MCP servers.
@@ -797,7 +803,7 @@
               class="sc-btn"
               data-variant="default"
               data-size="sm"
-              disabled={!daemonReachable || mcpSaving || !mcpForm.id.trim() || !mcpTargetValue()}
+              disabled={!daemonReachable || mcpSaving || mcpDuplicateId || !mcpForm.id.trim() || !mcpTargetValue()}
               onclick={saveMcpServer}
             >
               <Icon name="plus" size={12} />{mcpSaving ? "Adding…" : "Add server"}

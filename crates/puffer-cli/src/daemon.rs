@@ -1253,6 +1253,15 @@ fn handle_add_mcp_server(state: &DaemonState, params: &Value) -> Result<Value> {
     if transport != "stdio" && endpoint.is_empty() {
         anyhow::bail!("{transport} MCP servers require a URL");
     }
+    let inputs = state.build_runtime_inputs()?;
+    if inputs
+        .resources
+        .mcp_servers
+        .iter()
+        .any(|server| server.value.id.eq_ignore_ascii_case(id))
+    {
+        anyhow::bail!("MCP server `{id}` already exists");
+    }
 
     let spec = McpServerSpec {
         id: id.to_string(),
@@ -2759,7 +2768,7 @@ fn apply_daemon_yolo_mode(app_state: &mut AppState) {
 mod tests {
     use super::{
         apply_daemon_yolo_mode, apply_turn_model_override, apply_turn_request_options,
-        expand_home_path_with, handle_create_session, model_descriptor_dto,
+        expand_home_path_with, handle_add_mcp_server, handle_create_session, model_descriptor_dto,
         resolve_create_session_model_id, run_off_runtime, DaemonState, TurnRequestOptions,
     };
     use indexmap::IndexMap;
@@ -3026,6 +3035,32 @@ mod tests {
             expand_home_path_with("relative/project", Some(home)),
             PathBuf::from("relative/project")
         );
+    }
+
+    #[test]
+    fn add_mcp_server_rejects_duplicate_id() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let workspace_root = temp.path().join("workspace");
+        let paths = ConfigPaths {
+            workspace_root: workspace_root.clone(),
+            workspace_config_dir: workspace_root.join(".puffer"),
+            user_config_dir: temp.path().join("home").join(".puffer"),
+            builtin_resources_dir: workspace_root.join("resources"),
+        };
+        ensure_workspace_dirs(&paths).expect("workspace dirs");
+        let state = DaemonState::load(workspace_root, paths, "token".into(), true, false, false)
+            .expect("daemon state");
+        let params = json!({
+            "id": "github",
+            "transport": "stdio",
+            "target": "npx @modelcontextprotocol/server-github",
+            "scope": "local",
+        });
+
+        handle_add_mcp_server(&state, &params).expect("first MCP server add");
+        let error = handle_add_mcp_server(&state, &params).expect_err("duplicate rejected");
+
+        assert!(error.to_string().contains("already exists"));
     }
 
     #[test]
