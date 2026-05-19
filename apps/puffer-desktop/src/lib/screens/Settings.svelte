@@ -239,7 +239,23 @@
     permissionDirty = true;
   }
 
+  function validatePermissionRows(): string | null {
+    const seen = new Set<string>();
+    for (let index = 0; index < permissionRows.length; index += 1) {
+      const tool = permissionRows[index].tool.trim();
+      if (!tool) return `Rule ${index + 1} is missing a tool id.`;
+      if (seen.has(tool)) return `Duplicate tool rule: ${tool}`;
+      seen.add(tool);
+    }
+    return null;
+  }
+
   async function savePermissionRows() {
+    const validationError = validatePermissionRows();
+    if (validationError) {
+      permissionError = validationError;
+      return;
+    }
     permissionSaving = true;
     permissionError = null;
     try {
@@ -352,6 +368,7 @@
   let modelPickerLoading = $derived(
     Boolean(modelPickerProvider && modelLoadingByProvider[modelPickerProvider])
   );
+  let permissionValidationError = $derived(validatePermissionRows());
   let canSaveDefaultModel = $derived(
     Boolean(
       daemonReachable &&
@@ -593,6 +610,9 @@
       {#if permissionError}
         <div class="pf-settings-note warn">{permissionError}</div>
       {/if}
+      {#if permissionValidationError}
+        <div class="pf-settings-note warn">{permissionValidationError}</div>
+      {/if}
 
       <div class="pf-perm-table">
         <div class="pf-perm-row head">
@@ -654,7 +674,7 @@
           class="sc-btn"
           data-variant="default"
           data-size="sm"
-          disabled={!permissionDirty || permissionSaving || permissionLoading || !daemonReachable}
+          disabled={!permissionDirty || permissionSaving || permissionLoading || !daemonReachable || Boolean(permissionValidationError)}
           onclick={savePermissionRows}
         >
           {permissionSaving ? "Saving…" : "Save"}

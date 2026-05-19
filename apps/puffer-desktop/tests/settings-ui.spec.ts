@@ -126,6 +126,25 @@ test("permissions settings save tool policies through the daemon", async ({ page
   });
 });
 
+test("permissions settings block duplicate tool rules before saving", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Permissions" }).click();
+  await expect(page.getByText("Stored at")).toBeVisible();
+
+  await page.getByRole("button", { name: "Add rule" }).click();
+  const row = page.locator(".pf-perm-row").last();
+  await row.locator("input").fill("bash");
+  await row.locator("select").selectOption("deny");
+
+  await expect(page.getByText("Duplicate tool rule: bash")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save" })).toBeDisabled();
+  expect(daemon.requests.filter((request) => request.method === "save_permissions")).toHaveLength(0);
+});
+
 test("permissions settings keep edits after a late list response", async ({ page }) => {
   const daemon = new FakeDaemon();
   daemon.delayResponse("list_permissions", () => true, 220);
