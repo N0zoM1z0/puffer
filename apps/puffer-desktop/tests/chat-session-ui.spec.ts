@@ -547,6 +547,76 @@ test("permission approvals submit only once while resolution is pending", async 
   expect(daemon.requests.filter((request) => request.method === "resolve_permission")).toHaveLength(1);
 });
 
+test("late permission failures do not pollute a newly selected session", async ({ page }) => {
+  const daemon = new FakeDaemon({
+    sessions: [
+      {
+        sessionId: "session-alpha-permission",
+        displayName: "Alpha permission",
+        title: "Alpha permission",
+        cwd: "/tmp/puffer",
+        folderPath: "/tmp/puffer",
+        updatedAtMs: baseTime,
+        createdAtMs: baseTime - 60_000,
+        eventCount: 1,
+        timeline: [
+          {
+            kind: "assistant_message",
+            id: "alpha-permission-seed",
+            text: "Alpha permission transcript",
+            createdAtMs: baseTime - 30_000
+          }
+        ]
+      },
+      {
+        sessionId: "session-beta-permission",
+        displayName: "Beta permission",
+        title: "Beta permission",
+        cwd: "/tmp/puffer",
+        folderPath: "/tmp/puffer",
+        updatedAtMs: baseTime - 1_000,
+        createdAtMs: baseTime - 120_000,
+        eventCount: 1,
+        timeline: [
+          {
+            kind: "assistant_message",
+            id: "beta-permission-seed",
+            text: "Beta permission transcript",
+            createdAtMs: baseTime - 90_000
+          }
+        ]
+      }
+    ]
+  });
+  daemon.delayResponse("resolve_permission", () => true, 180);
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openSession(page, /Alpha permission/);
+  await expect(page.getByText("Alpha permission transcript")).toBeVisible();
+  daemon.emit("session:session-alpha-permission:event", {
+    type: "permission-request",
+    turnId: "turn-permission",
+    requestId: "permission-1",
+    toolId: "bash",
+    summary: "Run shell command",
+    reason: "Needs workspace write access."
+  });
+
+  await expect(page.getByText("Approval needed")).toBeVisible();
+  daemon.failNext("resolve_permission", "permission channel closed");
+  await page.getByRole("button", { name: "Deny" }).click();
+  await daemon.waitForRequest("resolve_permission");
+
+  await openSession(page, /Beta permission/);
+  await expect(page.getByText("Beta permission transcript")).toBeVisible();
+  await page.waitForTimeout(230);
+
+  await expect(page.getByText("Beta permission transcript")).toBeVisible();
+  await expect(page.getByText("Permission response failed")).toHaveCount(0);
+  await expect(page.getByText("permission channel closed")).toHaveCount(0);
+});
+
 test("failed question responses keep the question prompt retryable", async ({ page }) => {
   const daemon = new FakeDaemon();
   await daemon.install(page);

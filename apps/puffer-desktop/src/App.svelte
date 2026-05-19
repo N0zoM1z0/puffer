@@ -1201,16 +1201,24 @@
     return "allow_once";
   }
 
+  function isSameSelectedSession(sessionId: string | null, loadGeneration: number): boolean {
+    return selectedSession?.id === sessionId && sessionLoadGeneration === loadGeneration;
+  }
+
   async function resolvePermission(permissionId: string, choice: string) {
     const mapping = turnPermissionLookup[permissionId];
     if (mapping) {
+      const originSessionId = selectedSession?.id ?? null;
+      const originLoadGeneration = sessionLoadGeneration;
       try {
         await resolveTurnPermission(mapping.turnId, mapping.requestId, mapPermissionAction(choice));
+        if (!isSameSelectedSession(originSessionId, originLoadGeneration)) return;
         dismissedPermissionIds = [...dismissedPermissionIds, permissionId];
         statusMessage = `${choice} sent to agent.`;
         const { [permissionId]: _drop, ...rest } = turnPermissionLookup;
         turnPermissionLookup = rest;
       } catch (error) {
+        if (!isSameSelectedSession(originSessionId, originLoadGeneration)) return;
         const detail = errorText(error);
         statusMessage = `resolve_permission failed: ${detail}`;
         appendAgentError("Permission response failed", detail, "permission-error");
@@ -1228,13 +1236,17 @@
   ) {
     const mapping = turnQuestionLookup[questionId];
     if (mapping) {
+      const originSessionId = selectedSession?.id ?? null;
+      const originLoadGeneration = sessionLoadGeneration;
       try {
         await resolveTurnUserQuestion(mapping.turnId, mapping.requestId, answers, annotations);
+        if (!isSameSelectedSession(originSessionId, originLoadGeneration)) return;
         dismissedQuestionIds = [...dismissedQuestionIds, questionId];
         statusMessage = "Answer sent to agent.";
         const { [questionId]: _drop, ...rest } = turnQuestionLookup;
         turnQuestionLookup = rest;
       } catch (error) {
+        if (!isSameSelectedSession(originSessionId, originLoadGeneration)) return;
         const detail = errorText(error);
         statusMessage = `resolve_user_question failed: ${detail}`;
         appendAgentError("Question response failed", detail, "question-error");
