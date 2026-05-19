@@ -147,6 +147,7 @@
   let sessionLoadGeneration = 0;
   let groupsRefreshGeneration = 0;
   let desktopPins = $state<DesktopPinState>({ pinnedAgentIds: [], pinnedWorkspacePaths: [] });
+  let desktopPinGenerations: Record<string, number> = {};
 
   let settingsSnapshot = $state<SettingsSnapshot | null>(null);
   let settingsLoading = $state(false);
@@ -746,11 +747,17 @@
   }
 
   async function toggleDesktopPin(kind: "agent" | "workspace", id: string, pinned: boolean) {
+    const key = `${kind}:${id}`;
+    const generation = (desktopPinGenerations[key] ?? 0) + 1;
+    desktopPinGenerations = { ...desktopPinGenerations, [key]: generation };
     applyPin(kind, id, pinned);
     try {
-      desktopPins = await setDesktopPin(kind, id, pinned);
+      const nextPins = await setDesktopPin(kind, id, pinned);
+      if (desktopPinGenerations[key] !== generation) return;
+      desktopPins = nextPins;
       statusMessage = `${pinned ? "Pinned" : "Unpinned"} ${kind}.`;
     } catch (error) {
+      if (desktopPinGenerations[key] !== generation) return;
       applyPin(kind, id, !pinned);
       statusMessage = `Failed to update pin: ${error}`;
     }
@@ -897,6 +904,7 @@
     settledTurnIds = new Set();
     sessionLoadGeneration += 1;
     groupsRefreshGeneration += 1;
+    desktopPinGenerations = {};
     if (sessionEventUnlisten) {
       sessionEventUnlisten();
       sessionEventUnlisten = null;

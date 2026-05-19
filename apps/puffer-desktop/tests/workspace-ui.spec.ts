@@ -163,3 +163,35 @@ test("workspace ignores stale grouped session refresh responses", async ({ page 
   await expect(workspace.getByRole("button", { name: /^New workspace session\b/ })).toBeVisible();
   await expect(workspace.getByText("Old workspace session")).toHaveCount(0);
 });
+
+test("agent pin keeps the latest user intent when an older response arrives late", async ({ page }) => {
+  const daemon = new FakeDaemon({
+    sessions: [
+      {
+        sessionId: "session-pin-race",
+        displayName: "Pin race session",
+        title: "Pin race session",
+        cwd: "/tmp/puffer-pin",
+        folderPath: "/tmp/puffer-pin",
+        updatedAtMs: baseTime,
+        createdAtMs: baseTime - 60_000
+      }
+    ]
+  });
+  daemon.delayResponse(
+    "set_desktop_pin",
+    (request) => request.params.id === "session-pin-race" && request.params.pinned === true,
+    220
+  );
+  await daemon.install(page);
+  await daemon.open(page);
+
+  const row = page.locator(".pf-sidebar-agent-row").filter({ hasText: "Pin race session" });
+  await row.getByRole("button", { name: "Pin agent" }).click();
+  await expect(row).toHaveAttribute("data-pinned", "true");
+  await row.getByRole("button", { name: "Unpin agent" }).click();
+  await expect(row).toHaveAttribute("data-pinned", "false");
+
+  await page.waitForTimeout(260);
+  await expect(row).toHaveAttribute("data-pinned", "false");
+});

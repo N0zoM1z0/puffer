@@ -227,6 +227,7 @@ export class FakeDaemon {
     defaultProvider: "codex",
     defaultModel: "test-model"
   };
+  private desktopPins: JsonRecord = { pinnedAgentIds: [], pinnedWorkspacePaths: [] };
   private permissions: JsonRecord = {
     path: "/tmp/puffer/.puffer/permissions.json",
     tools: { bash: "ask" }
@@ -495,7 +496,9 @@ export class FakeDaemon {
       case "list_external_credentials":
         return [];
       case "load_desktop_pins":
-        return { pinnedAgentIds: [], pinnedWorkspacePaths: [] };
+        return this.desktopPins;
+      case "set_desktop_pin":
+        return this.setDesktopPin(request.params);
       case "list_grouped_sessions":
         return this.groupedSessions();
       case "load_session_detail":
@@ -692,6 +695,20 @@ export class FakeDaemon {
     const providerId = String(params.providerId ?? "");
     this.authStatuses = this.authStatuses.filter((item) => item.providerId !== providerId);
     return this.settingsSnapshot();
+  }
+
+  private setDesktopPin(params: JsonRecord): JsonRecord {
+    const kind = String(params.kind ?? "");
+    const id = String(params.id ?? "");
+    const pinned = params.pinned === true;
+    const key = kind === "workspace" ? "pinnedWorkspacePaths" : "pinnedAgentIds";
+    const values = Array.isArray(this.desktopPins[key]) ? this.desktopPins[key] as string[] : [];
+    const without = values.filter((value) => value !== id);
+    this.desktopPins = {
+      ...this.desktopPins,
+      [key]: pinned ? [id, ...without] : without
+    };
+    return this.desktopPins;
   }
 
   private savePermissions(params: JsonRecord): JsonRecord {
