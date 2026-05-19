@@ -294,6 +294,57 @@ fn mcp_round_trip_add_get_list_remove() {
 }
 
 #[test]
+fn mcp_add_rejects_empty_targets_before_writing_manifest() {
+    let (_tempdir, workspace, puffer_home) = configured_workspace();
+
+    let empty_stdio = run_puffer(&workspace, &puffer_home, &["mcp", "add", "empty-stdio", ""]);
+    assert!(!empty_stdio.status.success(), "{empty_stdio:?}");
+    let empty_stdio_text = String::from_utf8_lossy(&empty_stdio.stderr);
+    assert!(
+        empty_stdio_text.contains("stdio MCP servers require a non-empty command"),
+        "{empty_stdio_text}"
+    );
+    assert!(!workspace
+        .join(".puffer/resources/mcp_servers/empty-stdio.yaml")
+        .exists());
+
+    let empty_http = run_puffer(
+        &workspace,
+        &puffer_home,
+        &["mcp", "add", "empty-http", "", "--transport", "http"],
+    );
+    assert!(!empty_http.status.success(), "{empty_http:?}");
+    let empty_http_text = String::from_utf8_lossy(&empty_http.stderr);
+    assert!(
+        empty_http_text.contains("http MCP servers require a non-empty endpoint URL"),
+        "{empty_http_text}"
+    );
+    assert!(!workspace
+        .join(".puffer/resources/mcp_servers/empty-http.yaml")
+        .exists());
+
+    let empty_json = run_puffer(
+        &workspace,
+        &puffer_home,
+        &[
+            "mcp",
+            "add-json",
+            "empty-json",
+            r#"{"transport":"stdio","target":""}"#,
+        ],
+    );
+    assert!(!empty_json.status.success(), "{empty_json:?}");
+    let empty_json_text = String::from_utf8_lossy(&empty_json.stderr);
+    assert!(
+        empty_json_text.contains("stdio MCP servers require a non-empty command"),
+        "{empty_json_text}"
+    );
+    assert!(!workspace
+        .join(".puffer/resources/mcp_servers/empty-json.yaml")
+        .exists());
+}
+
+#[test]
 fn plugin_round_trip_install_disable_enable_validate_uninstall() {
     let (tempdir, workspace, puffer_home) = configured_workspace();
     let manifest_path = tempdir.path().join("demo-plugin.yaml");

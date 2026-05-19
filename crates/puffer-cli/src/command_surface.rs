@@ -597,20 +597,34 @@ fn add_mcp_server(
     args: &[String],
 ) -> Result<()> {
     let spec = match transport {
-        McpTransport::Stdio => McpServerSpec {
-            id: name.to_string(),
-            display_name: name.to_string(),
-            transport: "stdio".to_string(),
-            endpoint: String::new(),
-            target: stdio_target(command_or_url, args),
-            description: format!("Workspace MCP server `{name}`"),
-            headers: Default::default(),
-            oauth: None,
-        },
+        McpTransport::Stdio => {
+            let target = stdio_target(command_or_url, args);
+            validate_mcp_target("stdio", "", &target)?;
+            McpServerSpec {
+                id: name.to_string(),
+                display_name: name.to_string(),
+                transport: "stdio".to_string(),
+                endpoint: String::new(),
+                target,
+                description: format!("Workspace MCP server `{name}`"),
+                headers: Default::default(),
+                oauth: None,
+            }
+        }
         McpTransport::Sse | McpTransport::Http => {
             if !args.is_empty() {
                 anyhow::bail!("additional arguments are only supported for stdio MCP servers");
             }
+            let endpoint = command_or_url.trim().to_string();
+            validate_mcp_target(
+                match transport {
+                    McpTransport::Sse => "sse",
+                    McpTransport::Http => "http",
+                    McpTransport::Stdio => unreachable!(),
+                },
+                &endpoint,
+                "",
+            )?;
             McpServerSpec {
                 id: name.to_string(),
                 display_name: name.to_string(),
@@ -620,7 +634,7 @@ fn add_mcp_server(
                     McpTransport::Stdio => unreachable!(),
                 }
                 .to_string(),
-                endpoint: command_or_url.to_string(),
+                endpoint,
                 target: String::new(),
                 description: format!("Workspace MCP server `{name}`"),
                 headers: Default::default(),
@@ -647,12 +661,15 @@ fn add_mcp_server_from_json(
     if transport != "stdio" && transport != "sse" && transport != "http" {
         anyhow::bail!("unsupported MCP transport `{transport}`");
     }
+    let endpoint = input.endpoint.unwrap_or_default();
+    let target = input.target.unwrap_or_default();
+    validate_mcp_target(&transport, &endpoint, &target)?;
     let spec = McpServerSpec {
         id: name.to_string(),
         display_name: input.display_name.unwrap_or_else(|| name.to_string()),
         transport,
-        endpoint: input.endpoint.unwrap_or_default(),
-        target: input.target.unwrap_or_default(),
+        endpoint,
+        target,
         description: input.description.unwrap_or_default(),
         headers: input.headers.unwrap_or_default(),
         oauth: None,
@@ -1067,10 +1084,22 @@ fn scan_disabled_plugin_files(dir: &Path) -> Result<Vec<PathBuf>> {
 }
 
 fn stdio_target(command_or_url: &str, args: &[String]) -> String {
-    std::iter::once(command_or_url.to_string())
+    std::iter::once(command_or_url.trim().to_string())
         .chain(args.iter().cloned())
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+fn validate_mcp_target(transport: &str, endpoint: &str, target: &str) -> Result<()> {
+    match transport {
+        "stdio" if target.trim().is_empty() => {
+            anyhow::bail!("stdio MCP servers require a non-empty command")
+        }
+        "sse" | "http" if endpoint.trim().is_empty() => {
+            anyhow::bail!("{transport} MCP servers require a non-empty endpoint URL")
+        }
+        _ => Ok(()),
+    }
 }
 
 fn source_kind_label(kind: SourceKind) -> &'static str {
