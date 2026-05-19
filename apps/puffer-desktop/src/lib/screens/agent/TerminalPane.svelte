@@ -56,14 +56,14 @@
       activePtyId = null;
       ptyTabs = [];
       seenSeqByPty = new Map();
-      cleanupTerminalAttach();
+      cleanupTerminalAttach(true);
       void restoreOrCreateTerminal(targetSessionId, targetCwd, generation);
     });
   });
 
   onDestroy(() => {
     disposed = true;
-    cleanupTerminalAttach();
+    cleanupTerminalAttach(true);
   });
 
   async function restoreOrCreateTerminal(targetSessionId: string, targetCwd: string, generation: number) {
@@ -207,6 +207,7 @@
       void writePty(ptyId, btoa(bin)).catch(() => {});
     });
 
+    if (disposed || generation !== attachGeneration || !container) return;
     resizeObserver = new ResizeObserver(() => fitTerminal(ptyId));
     resizeObserver.observe(container);
   }
@@ -250,11 +251,12 @@
       await activatePty(next.ptyId);
     } else {
       activePtyId = null;
-      cleanupTerminalAttach();
+      cleanupTerminalAttach(true);
     }
   }
 
-  function cleanupTerminalAttach() {
+  function cleanupTerminalAttach(invalidate = false) {
+    if (invalidate) attachGeneration += 1;
     dataDisposer?.();
     exitDisposer?.();
     dataDisposer = null;

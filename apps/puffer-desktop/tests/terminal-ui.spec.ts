@@ -116,6 +116,34 @@ test("Terminal stops accepting input immediately after closing the active PTY", 
   expect(daemon.requests.filter((request) => request.method === "pty_write")).toHaveLength(0);
 });
 
+test("Terminal ignores late attach work after closing the active PTY", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  daemon.delayResponse("pty_replay", (request) => request.params.ptyId === "pty-1", 180);
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: /Browser regression/ }).first().click();
+  await page.locator(".pf-agent-tabs").getByRole("button", { name: "Terminal", exact: true }).click();
+  await daemon.waitForRequest("pty_open", (request) => request.params.sessionId === "session-browser");
+  await daemon.waitForRequest("pty_replay", (request) => request.params.ptyId === "pty-1");
+
+  await page.getByRole("button", { name: "Close Terminal 1" }).click();
+  await daemon.waitForRequest("pty_close", (request) => request.params.ptyId === "pty-1");
+  await expect(page.getByRole("tab", { name: /Terminal 1/ })).toHaveCount(0);
+  await expect(page.getByText("No terminal open")).toBeVisible();
+
+  await page.waitForTimeout(230);
+  daemon.emit("pty:pty-1:data", {
+    data: Buffer.from("closed pty output\n", "utf8").toString("base64"),
+    seq: 1
+  });
+  await page.keyboard.type("x");
+
+  await expect(page.getByText("No terminal open")).toBeVisible();
+  await expect(page.locator(".pf-terminal-host")).toHaveCount(0);
+  expect(daemon.requests.filter((request) => request.method === "pty_write")).toHaveLength(0);
+});
+
 test("Terminal decodes UTF-8 PTY output", async ({ page }) => {
   const daemon = new FakeDaemon();
   await daemon.install(page);
