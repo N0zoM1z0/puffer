@@ -1641,6 +1641,10 @@ export type AddMcpServerInput = {
   scope?: "local" | "user";
 };
 
+export type UpdateMcpServerInput = Omit<AddMcpServerInput, "scope"> & {
+  originalId: string;
+};
+
 export type ModelDescriptorInfo = {
   id: string;
   displayName: string;
@@ -1682,6 +1686,23 @@ export async function addMcpServer(input: AddMcpServerInput): Promise<McpServerI
   const client = await ensureLocalDaemonClient();
   const result = await client.request<{ servers: McpServerInfo[] }>("add_mcp_server", input);
   return result.servers;
+}
+
+export async function updateMcpServer(input: UpdateMcpServerInput): Promise<McpServerInfo[]> {
+  const client = await ensureLocalDaemonClient();
+  const result = await client.request<{ servers: McpServerInfo[] }>("update_mcp_server", input);
+  return result.servers;
+}
+
+export async function removeMcpServer(id: string): Promise<McpServerInfo[]> {
+  const client = await ensureLocalDaemonClient();
+  const result = await client.request<{ servers: McpServerInfo[] }>("remove_mcp_server", { id });
+  return result.servers;
+}
+
+export async function testMcpServer(id: string): Promise<void> {
+  const client = await ensureLocalDaemonClient();
+  await client.request("test_mcp_server", { id });
 }
 
 export async function listProviderModels(providerId: string): Promise<ModelDescriptorInfo[]> {

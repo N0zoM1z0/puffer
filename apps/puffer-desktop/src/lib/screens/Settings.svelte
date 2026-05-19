@@ -10,8 +10,11 @@
     listMcpServers,
     listPermissions,
     listProviderModels,
+    removeMcpServer,
     savePermissions,
+    testMcpServer,
     updateConfig,
+    updateMcpServer,
     type McpServerInfo,
     type ModelDescriptorInfo,
     type PermissionsSnapshot
@@ -87,6 +90,9 @@
   let mcpLoading = $state(false);
   let mcpLoadGeneration = 0;
   let mcpSaving = $state(false);
+  let mcpRemovingId = $state<string | null>(null);
+  let mcpTestingId = $state<string | null>(null);
+  let mcpEditingId = $state<string | null>(null);
   let mcpError = $state<string | null>(null);
   let mcpSaved = $state<string | null>(null);
   let mcpForm = $state({
@@ -99,7 +105,10 @@
     scope: "local" as "local" | "user"
   });
   let mcpDuplicateId = $derived(
-    mcpServers.some((server) => server.id.toLowerCase() === mcpForm.id.trim().toLowerCase())
+    mcpServers.some((server) =>
+      server.id.toLowerCase() === mcpForm.id.trim().toLowerCase()
+      && server.id.toLowerCase() !== (mcpEditingId ?? "").toLowerCase()
+    )
   );
 
   // Per-provider model listings cached by providerId. Populated on demand
@@ -155,6 +164,40 @@
     return args ? `${command} ${args}` : command;
   }
 
+  function editableMcpServer(server: McpServerInfo): boolean {
+    return server.sourceKind !== "builtin" && Boolean(server.sourcePath);
+  }
+
+  function editMcpServer(server: McpServerInfo) {
+    if (!editableMcpServer(server)) return;
+    mcpEditingId = server.id;
+    mcpError = null;
+    mcpSaved = null;
+    mcpForm = {
+      id: server.id,
+      displayName: server.displayName,
+      transport: server.transport === "sse" || server.transport === "http" ? server.transport : "stdio",
+      commandOrUrl: server.transport === "stdio" ? server.target : (server.endpoint || server.target),
+      args: "",
+      description: server.description,
+      scope: server.sourceKind === "user" ? "user" : "local"
+    };
+  }
+
+  function cancelMcpEdit() {
+    const scope = mcpForm.scope;
+    mcpEditingId = null;
+    mcpForm = {
+      id: "",
+      displayName: "",
+      transport: "stdio",
+      commandOrUrl: "",
+      args: "",
+      description: "",
+      scope
+    };
+  }
+
   async function saveMcpServer() {
     const id = mcpForm.id.trim();
     const targetOrUrl = mcpTargetValue();
@@ -163,17 +206,20 @@
     mcpError = null;
     mcpSaved = null;
     try {
-      mcpServers = await addMcpServer({
+      const payload = {
         id,
         displayName: mcpForm.displayName.trim() || undefined,
         description: mcpForm.description.trim() || undefined,
         transport: mcpForm.transport,
         endpoint: mcpForm.transport === "stdio" ? undefined : targetOrUrl,
-        target: mcpForm.transport === "stdio" ? targetOrUrl : undefined,
-        scope: mcpForm.scope
-      });
+        target: mcpForm.transport === "stdio" ? targetOrUrl : undefined
+      };
+      mcpServers = mcpEditingId
+        ? await updateMcpServer({ ...payload, originalId: mcpEditingId })
+        : await addMcpServer({ ...payload, scope: mcpForm.scope });
       mcpLoaded = true;
-      mcpSaved = `Added ${id}`;
+      mcpSaved = mcpEditingId ? `Updated ${id}` : `Added ${id}`;
+      mcpEditingId = null;
       mcpForm = {
         id: "",
         displayName: "",
@@ -188,6 +234,38 @@
       mcpError = (e as Error).message ?? String(e);
     } finally {
       mcpSaving = false;
+    }
+  }
+
+  async function removeMcpServerFromSettings(server: McpServerInfo) {
+    if (!editableMcpServer(server) || mcpRemovingId) return;
+    mcpRemovingId = server.id;
+    mcpError = null;
+    mcpSaved = null;
+    try {
+      mcpServers = await removeMcpServer(server.id);
+      if (mcpEditingId === server.id) cancelMcpEdit();
+      mcpSaved = `Removed ${server.id}`;
+      props.onRefresh();
+    } catch (e) {
+      mcpError = (e as Error).message ?? String(e);
+    } finally {
+      mcpRemovingId = null;
+    }
+  }
+
+  async function testMcpServerFromSettings(server: McpServerInfo) {
+    if (mcpTestingId) return;
+    mcpTestingId = server.id;
+    mcpError = null;
+    mcpSaved = null;
+    try {
+      await testMcpServer(server.id);
+      mcpSaved = `Validated ${server.id}`;
+    } catch (e) {
+      mcpError = (e as Error).message ?? String(e);
+    } finally {
+      mcpTestingId = null;
     }
   }
 
@@ -721,8 +799,12 @@
 
       <div class="pf-settings-row" style="align-items: start;">
         <div class="meta">
-          <div class="label">Add server</div>
-          <div class="desc">Create a declarative MCP manifest in this workspace or your user resource directory.</div>
+          <div class="label">{mcpEditingId ? "Edit server" : "Add server"}</div>
+          <div class="desc">
+            {mcpEditingId
+              ? `Update the declarative MCP manifest for ${mcpEditingId}.`
+              : "Create a declarative MCP manifest in this workspace or your user resource directory."}
+          </div>
         </div>
         <div class="pf-mcp-form">
           <div class="pf-mcp-form-grid">
@@ -808,7 +890,19 @@
               oninput={(e) => (mcpForm.description = (e.currentTarget as HTMLInputElement).value)}
             />
           </label>
-          <div style="display: flex; justify-content: flex-end;">
+          <div style="display: flex; justify-content: flex-end; gap: 8px;">
+            {#if mcpEditingId}
+              <button
+                type="button"
+                class="sc-btn"
+                data-variant="ghost"
+                data-size="sm"
+                disabled={mcpSaving}
+                onclick={cancelMcpEdit}
+              >
+                Cancel
+              </button>
+            {/if}
             <button
               type="button"
               class="sc-btn"
@@ -817,7 +911,7 @@
               disabled={!daemonReachable || mcpSaving || mcpDuplicateId || !mcpForm.id.trim() || !mcpTargetValue()}
               onclick={saveMcpServer}
             >
-              <Icon name="plus" size={12} />{mcpSaving ? "Adding…" : "Add server"}
+              <Icon name="plus" size={12} />{mcpSaving ? "Saving…" : mcpEditingId ? "Update server" : "Add server"}
             </button>
           </div>
         </div>
@@ -840,7 +934,38 @@
             <div style="color: var(--muted-foreground); font-family: var(--font-sans); font-size: 11px;" title={s.sourcePath ?? ""}>
               {s.sourceKind}
             </div>
-            <input type="checkbox" class="sc-switch" checked disabled />
+            <div class="pf-mcp-actions">
+              <button
+                type="button"
+                class="sc-btn"
+                data-variant="ghost"
+                data-size="sm"
+                disabled={!daemonReachable || mcpTestingId !== null}
+                onclick={() => testMcpServerFromSettings(s)}
+              >
+                {mcpTestingId === s.id ? "Testing…" : "Test"}
+              </button>
+              <button
+                type="button"
+                class="sc-btn"
+                data-variant="ghost"
+                data-size="sm"
+                disabled={!daemonReachable || !editableMcpServer(s) || mcpSaving}
+                onclick={() => editMcpServer(s)}
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                class="sc-btn"
+                data-variant="ghost"
+                data-size="sm"
+                disabled={!daemonReachable || !editableMcpServer(s) || mcpRemovingId !== null}
+                onclick={() => removeMcpServerFromSettings(s)}
+              >
+                {mcpRemovingId === s.id ? "Removing…" : "Remove"}
+              </button>
+            </div>
           </div>
         {/each}
         {#if !mcpLoading && mcpServers.length === 0}

@@ -662,6 +662,9 @@ async fn dispatch_request(
         "logout_provider" => respond!(detached!(|s, p| handle_logout_provider(&s, &p))),
         "list_mcp_servers" => respond!(detached!(|s| handle_list_mcp_servers(&s))),
         "add_mcp_server" => respond!(detached!(|s, p| handle_add_mcp_server(&s, &p))),
+        "update_mcp_server" => respond!(detached!(|s, p| handle_update_mcp_server(&s, &p))),
+        "remove_mcp_server" => respond!(detached!(|s, p| handle_remove_mcp_server(&s, &p))),
+        "test_mcp_server" => respond!(detached!(|s, p| handle_test_mcp_server(&s, &p))),
         "list_provider_models" => {
             respond!(detached!(|s, p| handle_list_provider_models(&s, &p)))
         }
@@ -1236,6 +1239,28 @@ struct AddMcpServerParams {
     scope: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdateMcpServerParams {
+    original_id: String,
+    id: String,
+    #[serde(default)]
+    display_name: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    transport: String,
+    #[serde(default)]
+    endpoint: Option<String>,
+    #[serde(default)]
+    target: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct McpServerIdParams {
+    id: String,
+}
+
 fn handle_add_mcp_server(state: &DaemonState, params: &Value) -> Result<Value> {
     let params: AddMcpServerParams = serde_json::from_value(params.clone())?;
     let id = params.id.trim();
@@ -1297,6 +1322,115 @@ fn handle_add_mcp_server(state: &DaemonState, params: &Value) -> Result<Value> {
     Ok(json!({ "servers": mcp_server_dtos(&inputs.resources) }))
 }
 
+fn handle_update_mcp_server(state: &DaemonState, params: &Value) -> Result<Value> {
+    let params: UpdateMcpServerParams = serde_json::from_value(params.clone())?;
+    let original_id = params.original_id.trim();
+    let id = params.id.trim();
+    validate_mcp_id(original_id)?;
+    validate_mcp_id(id)?;
+    let transport = params.transport.trim();
+    if !matches!(transport, "stdio" | "sse" | "http") {
+        anyhow::bail!("unsupported MCP transport `{transport}`");
+    }
+
+    let endpoint = params.endpoint.unwrap_or_default().trim().to_string();
+    let target = params.target.unwrap_or_default().trim().to_string();
+    if transport == "stdio" && target.is_empty() {
+        anyhow::bail!("stdio MCP servers require a command");
+    }
+    if transport != "stdio" && endpoint.is_empty() {
+        anyhow::bail!("{transport} MCP servers require a URL");
+    }
+
+    let inputs = state.build_runtime_inputs()?;
+    if inputs.resources.mcp_servers.iter().any(|server| {
+        !server.value.id.eq_ignore_ascii_case(original_id)
+            && server.value.id.eq_ignore_ascii_case(id)
+    }) {
+        anyhow::bail!("MCP server `{id}` already exists");
+    }
+    let source_path = inputs
+        .resources
+        .mcp_servers
+        .iter()
+        .find(|server| server.value.id.eq_ignore_ascii_case(original_id))
+        .map(|server| server.source_info.path.clone())
+        .ok_or_else(|| anyhow::anyhow!("MCP server `{original_id}` not found"))?;
+    let source_path = editable_mcp_path(state, &source_path, original_id)?;
+    let dir = source_path
+        .parent()
+        .ok_or_else(|| anyhow::anyhow!("MCP server path has no parent"))?;
+    let spec = McpServerSpec {
+        id: id.to_string(),
+        display_name: params
+            .display_name
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| id.to_string()),
+        transport: transport.to_string(),
+        endpoint,
+        target,
+        description: params
+            .description
+            .map(|value| value.trim().to_string())
+            .unwrap_or_default(),
+        headers: Default::default(),
+        oauth: None,
+    };
+    let path = dir.join(format!("{id}.yaml"));
+    std::fs::write(&path, serde_yaml::to_string(&spec)?)?;
+    if path != source_path && source_path.exists() {
+        std::fs::remove_file(&source_path)?;
+    }
+
+    let inputs = state.build_runtime_inputs()?;
+    Ok(json!({ "servers": mcp_server_dtos(&inputs.resources) }))
+}
+
+fn handle_remove_mcp_server(state: &DaemonState, params: &Value) -> Result<Value> {
+    let params: McpServerIdParams = serde_json::from_value(params.clone())?;
+    let id = params.id.trim();
+    validate_mcp_id(id)?;
+    let inputs = state.build_runtime_inputs()?;
+    let source_path = inputs
+        .resources
+        .mcp_servers
+        .iter()
+        .find(|server| server.value.id.eq_ignore_ascii_case(id))
+        .map(|server| server.source_info.path.clone())
+        .ok_or_else(|| anyhow::anyhow!("MCP server `{id}` not found"))?;
+    let source_path = editable_mcp_path(state, &source_path, id)?;
+    std::fs::remove_file(&source_path)?;
+
+    let inputs = state.build_runtime_inputs()?;
+    Ok(json!({ "servers": mcp_server_dtos(&inputs.resources) }))
+}
+
+fn handle_test_mcp_server(state: &DaemonState, params: &Value) -> Result<Value> {
+    let params: McpServerIdParams = serde_json::from_value(params.clone())?;
+    let id = params.id.trim();
+    validate_mcp_id(id)?;
+    let inputs = state.build_runtime_inputs()?;
+    let server = inputs
+        .resources
+        .mcp_servers
+        .iter()
+        .find(|server| server.value.id.eq_ignore_ascii_case(id))
+        .ok_or_else(|| anyhow::anyhow!("MCP server `{id}` not found"))?;
+    let spec = &server.value;
+    match spec.transport.as_str() {
+        "stdio" if spec.target.trim().is_empty() => {
+            anyhow::bail!("stdio MCP server `{id}` has no command")
+        }
+        "sse" | "http" if spec.endpoint.trim().is_empty() && spec.target.trim().is_empty() => {
+            anyhow::bail!("{} MCP server `{id}` has no URL", spec.transport)
+        }
+        "stdio" | "sse" | "http" | "streamable-http" => {}
+        other => anyhow::bail!("unsupported MCP transport `{other}`"),
+    }
+    Ok(json!({ "ok": true, "id": spec.id }))
+}
+
 fn validate_mcp_id(id: &str) -> Result<()> {
     if id.is_empty() {
         anyhow::bail!("MCP server id is required");
@@ -1310,6 +1444,25 @@ fn validate_mcp_id(id: &str) -> Result<()> {
         );
     }
     Ok(())
+}
+
+fn editable_mcp_path(state: &DaemonState, path: &Path, id: &str) -> Result<PathBuf> {
+    let workspace_dir = state
+        .paths
+        .workspace_config_dir
+        .join("resources/mcp_servers");
+    let user_dir = state.paths.user_config_dir.join("resources/mcp_servers");
+    let canonical_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let editable = [workspace_dir, user_dir].into_iter().any(|dir| {
+        dir.canonicalize()
+            .ok()
+            .map(|canonical_dir| canonical_path.starts_with(canonical_dir))
+            .unwrap_or(false)
+    });
+    if !editable {
+        anyhow::bail!("MCP server `{id}` is read-only");
+    }
+    Ok(path.to_path_buf())
 }
 
 fn mcp_server_dtos(resources: &LoadedResources) -> Vec<McpServerDto> {
@@ -2768,8 +2921,10 @@ fn apply_daemon_yolo_mode(app_state: &mut AppState) {
 mod tests {
     use super::{
         apply_daemon_yolo_mode, apply_turn_model_override, apply_turn_request_options,
-        expand_home_path_with, handle_add_mcp_server, handle_create_session, model_descriptor_dto,
-        resolve_create_session_model_id, run_off_runtime, DaemonState, TurnRequestOptions,
+        expand_home_path_with, handle_add_mcp_server, handle_create_session,
+        handle_remove_mcp_server, handle_test_mcp_server, handle_update_mcp_server,
+        model_descriptor_dto, resolve_create_session_model_id, run_off_runtime, DaemonState,
+        TurnRequestOptions,
     };
     use indexmap::IndexMap;
     use puffer_config::{ensure_workspace_dirs, ConfigPaths, PufferConfig};
@@ -3061,6 +3216,69 @@ mod tests {
         let error = handle_add_mcp_server(&state, &params).expect_err("duplicate rejected");
 
         assert!(error.to_string().contains("already exists"));
+    }
+
+    #[test]
+    fn mcp_server_update_test_and_remove_manage_workspace_manifest() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let workspace_root = temp.path().join("workspace");
+        let paths = ConfigPaths {
+            workspace_root: workspace_root.clone(),
+            workspace_config_dir: workspace_root.join(".puffer"),
+            user_config_dir: temp.path().join("home").join(".puffer"),
+            builtin_resources_dir: workspace_root.join("resources"),
+        };
+        ensure_workspace_dirs(&paths).expect("workspace dirs");
+        let state = DaemonState::load(
+            workspace_root.clone(),
+            paths.clone(),
+            "token".into(),
+            true,
+            false,
+            false,
+        )
+        .expect("daemon state");
+        handle_add_mcp_server(
+            &state,
+            &json!({
+                "id": "github",
+                "displayName": "GitHub",
+                "transport": "stdio",
+                "target": "npx @modelcontextprotocol/server-github",
+                "scope": "local",
+            }),
+        )
+        .expect("add MCP server");
+
+        let update = handle_update_mcp_server(
+            &state,
+            &json!({
+                "originalId": "github",
+                "id": "github-renamed",
+                "displayName": "GitHub MCP",
+                "description": "GitHub PR and issue tools",
+                "transport": "stdio",
+                "target": "npx @modelcontextprotocol/server-github",
+            }),
+        )
+        .expect("update MCP server");
+        assert!(update["servers"].as_array().unwrap().iter().any(|server| {
+            server["id"] == "github-renamed" && server["displayName"] == "GitHub MCP"
+        }));
+        assert!(!paths
+            .workspace_config_dir
+            .join("resources/mcp_servers/github.yaml")
+            .exists());
+
+        handle_test_mcp_server(&state, &json!({ "id": "github-renamed" }))
+            .expect("test MCP server");
+        let remove = handle_remove_mcp_server(&state, &json!({ "id": "github-renamed" }))
+            .expect("remove MCP server");
+        assert!(!remove["servers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|server| { server["id"] == "github-renamed" }));
     }
 
     #[test]

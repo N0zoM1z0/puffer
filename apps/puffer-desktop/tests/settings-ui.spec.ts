@@ -368,6 +368,71 @@ test("MCP settings lock the add form while a server is saving", async ({ page })
   await expect(page.getByText("Added github")).toBeVisible();
 });
 
+test("MCP settings manage existing workspace servers", async ({ page }) => {
+  const daemon = new FakeDaemon({
+    mcpServers: [
+      {
+        id: "playwright",
+        displayName: "Playwright",
+        description: "Browser automation",
+        transport: "stdio",
+        endpoint: "",
+        target: "npx @playwright/mcp",
+        sourceKind: "builtin",
+        sourcePath: null
+      },
+      {
+        id: "github",
+        displayName: "GitHub",
+        description: "GitHub issue tools",
+        transport: "stdio",
+        endpoint: "",
+        target: "npx @modelcontextprotocol/server-github",
+        sourceKind: "local",
+        sourcePath: "/tmp/puffer/.puffer/resources/mcp_servers/github.yaml"
+      }
+    ]
+  });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "MCP Servers" }).click();
+
+  const builtinCard = page.locator(".pf-mcp-card").filter({ hasText: "Playwright" });
+  await expect(builtinCard.getByRole("button", { name: "Edit" })).toBeDisabled();
+  await expect(builtinCard.getByRole("button", { name: "Remove" })).toBeDisabled();
+
+  const githubCard = page.locator(".pf-mcp-card").filter({ hasText: "GitHub" });
+  await githubCard.getByRole("button", { name: "Test" }).click();
+  await expect(page.getByText("Validated github")).toBeVisible();
+  expect((await daemon.waitForRequest("test_mcp_server")).params).toMatchObject({ id: "github" });
+
+  await githubCard.getByRole("button", { name: "Edit" }).click();
+  await page.getByLabel("Name").fill("GitHub MCP");
+  await page.getByLabel("Description").fill("GitHub PR and issue tools");
+  await page.getByRole("button", { name: "Update server" }).click();
+
+  const update = await daemon.waitForRequest("update_mcp_server");
+  expect(update.params).toMatchObject({
+    originalId: "github",
+    id: "github",
+    displayName: "GitHub MCP",
+    description: "GitHub PR and issue tools"
+  });
+  await expect(page.getByText("Updated github")).toBeVisible();
+  await expect(page.locator(".pf-mcp-card .title").filter({ hasText: "GitHub MCP" })).toBeVisible();
+
+  await page
+    .locator(".pf-mcp-card")
+    .filter({ hasText: "GitHub MCP" })
+    .getByRole("button", { name: "Remove" })
+    .click();
+  expect((await daemon.waitForRequest("remove_mcp_server")).params).toMatchObject({ id: "github" });
+  await expect(page.getByText("Removed github")).toBeVisible();
+  await expect(page.locator(".pf-mcp-card .title").filter({ hasText: "GitHub MCP" })).toHaveCount(0);
+});
+
 test("MCP settings ignore stale server loads after workspace refresh", async ({ page }) => {
   const daemon = new FakeDaemon();
   daemon.delayResponse("list_mcp_servers", () => true, 260);

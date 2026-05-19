@@ -546,6 +546,12 @@ export class FakeDaemon {
         return { servers: this.mcpServers };
       case "add_mcp_server":
         return this.addMcpServer(request.params);
+      case "update_mcp_server":
+        return this.updateMcpServer(request.params);
+      case "remove_mcp_server":
+        return this.removeMcpServer(request.params);
+      case "test_mcp_server":
+        return this.testMcpServer(request.params);
       case "pty_list":
         return this.ptyState(String(request.params.sessionId ?? session.sessionId));
       case "pty_open":
@@ -758,6 +764,40 @@ export class FakeDaemon {
       server
     ];
     return { servers: this.mcpServers };
+  }
+
+  private updateMcpServer(params: JsonRecord): JsonRecord {
+    const originalId = String(params.originalId ?? "");
+    const id = String(params.id ?? "");
+    const server = {
+      id,
+      displayName: String(params.displayName ?? id),
+      description: String(params.description ?? ""),
+      transport: String(params.transport ?? "stdio"),
+      endpoint: String(params.endpoint ?? ""),
+      target: String(params.target ?? ""),
+      sourceKind: this.mcpServers.find((item) => item.id === originalId)?.sourceKind ?? "local",
+      sourcePath: `/tmp/puffer/.puffer/mcp_servers/${id}.json`
+    };
+    this.mcpServers = [
+      ...this.mcpServers.filter((item) => item.id !== originalId && item.id !== id),
+      server
+    ];
+    return { servers: this.mcpServers };
+  }
+
+  private removeMcpServer(params: JsonRecord): JsonRecord {
+    const id = String(params.id ?? "");
+    this.mcpServers = this.mcpServers.filter((item) => item.id !== id);
+    return { servers: this.mcpServers };
+  }
+
+  private testMcpServer(params: JsonRecord): JsonRecord {
+    const id = String(params.id ?? "");
+    if (!this.mcpServers.some((item) => item.id === id)) {
+      throw new Error(`MCP server not found: ${id}`);
+    }
+    return { ok: true, id };
   }
 
   private settingsSnapshot(): JsonRecord {
