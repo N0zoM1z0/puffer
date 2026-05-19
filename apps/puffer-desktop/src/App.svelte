@@ -156,6 +156,7 @@
   let authError = $state<string | null>(null);
   let externalCredentials = $state<ExternalCredential[]>([]);
   let importBusyKey = $state<string | null>(null);
+  let authActionGeneration = 0;
   let actionBusy = $state(false);
   let remoteOperation = $state<RemoteOperation | null>(null);
   let remoteBusy = $state(false);
@@ -600,25 +601,31 @@
   }
 
   async function handleImportExternal(providerId: string, source: "claude" | "codex") {
+    if (authBusyProviderId || importBusyKey) return;
+    const generation = ++authActionGeneration;
     importBusyKey = `${providerId}::${source}`;
     authError = null;
     try {
-      settingsSnapshot = await importExternalCredential(providerId, source);
+      const snapshot = await importExternalCredential(providerId, source);
+      if (generation !== authActionGeneration) return;
+      settingsSnapshot = snapshot;
       onboardingCompleted = true;
       onboarding = false;
       tweaks = { ...tweaks, screen: "workspace" };
       statusMessage = `Imported ${source} credential into ${providerId}.`;
       void listExternalCredentials()
         .then((found) => {
+          if (generation !== authActionGeneration) return;
           externalCredentials = found;
         })
         .catch(() => {});
       await refreshGroups();
     } catch (error) {
+      if (generation !== authActionGeneration) return;
       authError = String(error);
       statusMessage = authError;
     } finally {
-      importBusyKey = null;
+      if (generation === authActionGeneration) importBusyKey = null;
     }
   }
 
@@ -635,24 +642,31 @@
   }
 
   async function handleOauthLogin(providerId: string) {
+    if (authBusyProviderId || importBusyKey) return;
+    const generation = ++authActionGeneration;
     authBusyProviderId = providerId;
     authError = null;
     try {
-      settingsSnapshot = await loginWithOauth(providerId, remoteConnection);
+      const snapshot = await loginWithOauth(providerId, remoteConnection);
+      if (generation !== authActionGeneration) return;
+      settingsSnapshot = snapshot;
       onboardingCompleted = true;
       onboarding = false;
       tweaks = { ...tweaks, screen: "workspace" };
       statusMessage = `Connected to ${providerId}.`;
       await refreshGroups();
     } catch (error) {
+      if (generation !== authActionGeneration) return;
       authError = String(error);
       statusMessage = authError;
     } finally {
-      authBusyProviderId = null;
+      if (generation === authActionGeneration) authBusyProviderId = null;
     }
   }
 
   async function handleApiKeyLogin(providerId: string, apiKey: string) {
+    if (authBusyProviderId || importBusyKey) return;
+    const generation = ++authActionGeneration;
     authBusyProviderId = providerId;
     authError = null;
     try {
@@ -662,9 +676,13 @@
       // is reachable. For genuinely remote connections we stay on the
       // Tauri path so `remoteConnection` (SSH command) is honored.
       if (remoteConnection.enabled) {
-        settingsSnapshot = await loginWithApiKey(providerId, apiKey, remoteConnection);
+        const snapshot = await loginWithApiKey(providerId, apiKey, remoteConnection);
+        if (generation !== authActionGeneration) return;
+        settingsSnapshot = snapshot;
       } else {
-        settingsSnapshot = await loginWithApiKeyViaDaemon(providerId, apiKey);
+        const snapshot = await loginWithApiKeyViaDaemon(providerId, apiKey);
+        if (generation !== authActionGeneration) return;
+        settingsSnapshot = snapshot;
       }
       onboardingCompleted = true;
       onboarding = false;
@@ -672,22 +690,25 @@
       statusMessage = `Stored API key for ${providerId}.`;
       await refreshGroups();
     } catch (error) {
+      if (generation !== authActionGeneration) return;
       authError = String(error);
       statusMessage = authError;
     } finally {
-      authBusyProviderId = null;
+      if (generation === authActionGeneration) authBusyProviderId = null;
     }
   }
 
   async function handleLogout(providerId: string) {
+    if (authBusyProviderId || importBusyKey) return;
+    const generation = ++authActionGeneration;
     authBusyProviderId = providerId;
     authError = null;
     try {
-      if (remoteConnection.enabled) {
-        settingsSnapshot = await logoutProvider(providerId, remoteConnection);
-      } else {
-        settingsSnapshot = await logoutProviderViaDaemon(providerId);
-      }
+      const snapshot = remoteConnection.enabled
+        ? await logoutProvider(providerId, remoteConnection)
+        : await logoutProviderViaDaemon(providerId);
+      if (generation !== authActionGeneration) return;
+      settingsSnapshot = snapshot;
       statusMessage = `Disconnected ${providerId}.`;
       if ((settingsSnapshot.auth?.length ?? 0) === 0) {
         groups = [];
@@ -696,10 +717,11 @@
         onboarding = true;
       }
     } catch (error) {
+      if (generation !== authActionGeneration) return;
       authError = String(error);
       statusMessage = authError;
     } finally {
-      authBusyProviderId = null;
+      if (generation === authActionGeneration) authBusyProviderId = null;
     }
   }
 
@@ -905,6 +927,9 @@
     sessionLoadGeneration += 1;
     groupsRefreshGeneration += 1;
     desktopPinGenerations = {};
+    authActionGeneration += 1;
+    authBusyProviderId = null;
+    importBusyKey = null;
     if (sessionEventUnlisten) {
       sessionEventUnlisten();
       sessionEventUnlisten = null;

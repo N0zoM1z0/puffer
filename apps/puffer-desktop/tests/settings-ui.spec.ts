@@ -83,6 +83,27 @@ test("provider API key connect requires a non-empty key", async ({ page }) => {
   });
 });
 
+test("provider auth controls are disabled while another auth action is pending", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  daemon.delayResponse("login_with_api_key", () => true, 220);
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Providers" }).click();
+
+  const anthropicCard = page.locator(".provider-card").filter({ hasText: "Anthropic" });
+  const codexCard = page.locator(".provider-card").filter({ hasText: "Codex" });
+  await anthropicCard.getByLabel("API key for Anthropic").fill("sk-test");
+  await anthropicCard.getByRole("button", { name: "Connect" }).click();
+  await daemon.waitForRequest("login_with_api_key");
+
+  await expect(anthropicCard.getByLabel("API key for Anthropic")).toBeDisabled();
+  await expect(anthropicCard.getByRole("button", { name: "Connect" })).toBeDisabled();
+  await expect(codexCard.getByRole("button", { name: "Connect with OAuth" })).toBeDisabled();
+});
+
+
 test("permissions settings save tool policies through the daemon", async ({ page }) => {
   const daemon = new FakeDaemon();
   await daemon.install(page);

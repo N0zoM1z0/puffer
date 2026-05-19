@@ -348,6 +348,7 @@
   // static panes with a friendly "connect daemon" banner instead of a red
   // error. In Tauri the singleton connects on first `ensureLocalDaemonClient`.
   let daemonReachable = isDaemonReachable();
+  let authOperationBusy = $derived(Boolean(props.busyProviderId || props.busyImportKey));
   let modelPickerLoading = $derived(
     Boolean(modelPickerProvider && modelLoadingByProvider[modelPickerProvider])
   );
@@ -448,14 +449,14 @@
           <div class="desc">{(props.snapshot?.auth.length ?? 0) === 0 ? "No providers signed in." : "Signed-in providers and session controls."}</div>
         </div>
         <div style="display: flex; flex-direction: column; gap: 6px; justify-self: end; align-items: flex-end;">
-          <button type="button" class="sc-btn" data-variant="outline" data-size="sm" onclick={props.onRefresh}>
+          <button type="button" class="sc-btn" data-variant="outline" data-size="sm" onclick={props.onRefresh} disabled={authOperationBusy || props.loading}>
             <Icon name="refresh" size={13} />Refresh
           </button>
           {#each props.snapshot?.auth ?? [] as a (a.providerId)}
             <div style="display: flex; align-items: center; gap: 8px; font-size: 12px;">
               <span style="font-family: var(--font-mono);">{a.providerId}</span>
               <span style="color: var(--muted-foreground);">· {a.kind}{a.email ? ` · ${a.email}` : ""}</span>
-              <button type="button" class="sc-btn" data-variant="ghost" data-size="sm" onclick={() => props.onLogout(a.providerId)}>
+              <button type="button" class="sc-btn" data-variant="ghost" data-size="sm" onclick={() => props.onLogout(a.providerId)} disabled={authOperationBusy}>
                 Sign out
               </button>
             </div>

@@ -16,6 +16,7 @@
 
   let apiKeys: Record<string, string> = {};
   let query = "";
+  $: authBusy = busyProviderId !== null || busyImportKey !== null;
 
   function updateApiKey(providerId: string, value: string) {
     apiKeys = { ...apiKeys, [providerId]: value };
@@ -26,6 +27,7 @@
   }
 
   function submitApiKey(providerId: string) {
+    if (authBusy) return;
     const apiKey = apiKeyValue(providerId).trim();
     if (!apiKey) return;
     onLoginApiKey(providerId, apiKey);
@@ -86,7 +88,7 @@
       autocomplete="off"
       spellcheck="false"
     />
-    <button class="refresh-btn" on:click={onRefresh} title="Re-scan providers">
+    <button class="refresh-btn" on:click={onRefresh} title="Re-scan providers" disabled={loading || authBusy}>
       Refresh
     </button>
   </div>
@@ -119,7 +121,7 @@
                 <button
                   type="button"
                   class="import"
-                  disabled={busyImportKey === importKey(candidate.providerId, candidate.source)}
+                  disabled={authBusy}
                   on:click={() => onImportExternal(candidate.providerId, candidate.source)}
                   title={candidate.sourcePath}
                 >
@@ -137,7 +139,7 @@
             {#if supports(provider, "oauth")}
               <button
                 class="oauth-btn"
-                disabled={busyProviderId === provider.id}
+                disabled={authBusy}
                 on:click={() => onLoginOauth(provider.id)}
               >
                 {busyProviderId === provider.id
@@ -155,6 +157,7 @@
                   aria-label={`API key for ${provider.displayName}`}
                   value={apiKeys[provider.id] ?? ""}
                   placeholder="Paste API key"
+                  disabled={authBusy}
                   on:input={(event) =>
                     updateApiKey(provider.id, (event.currentTarget as HTMLInputElement).value)}
                   on:keydown={(event) => {
@@ -163,7 +166,7 @@
                 />
                 <button
                   class="apikey-btn"
-                  disabled={busyProviderId === provider.id || !(apiKeys[provider.id] ?? "").trim()}
+                  disabled={authBusy || !(apiKeys[provider.id] ?? "").trim()}
                   on:click={() => submitApiKey(provider.id)}
                 >
                   Connect
