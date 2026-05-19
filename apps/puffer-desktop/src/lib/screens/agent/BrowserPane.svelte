@@ -93,6 +93,7 @@
   let pendingCursorPoint: { x: number; y: number } | null = null;
   let pendingCursorSessionId: string | null = null;
   let tabStateVersion = 0;
+  let tabCreationVersion = 0;
   const handledBrowserShortcutCodes = new Set<string>();
 
   let activeTab = $derived(tabs.find((tab) => tab.id === activeTabId) ?? tabs[0]);
@@ -556,6 +557,7 @@
         requestedAtGeneration !== sessionGeneration
       ) return;
       const tab = tabFromInfo(info);
+      tabCreationVersion += 1;
       tabs = [...tabs.filter((item) => item.id !== tab.id), tab];
       activeTabId = tab.id;
       nextTabNumber = nextTabIndex(tabs);
@@ -580,14 +582,23 @@
 
   function closeTab(tabId: string, event?: Event) {
     event?.stopPropagation();
+    const requestedAtGeneration = sessionGeneration;
+    const requestedAtCreationVersion = tabCreationVersion;
+    const closeVersion = tabStateVersion + 1;
     void browserTabClose(sessionId, tabId)
       .then((state) => {
+        if (
+          disposed ||
+          requestedAtGeneration !== sessionGeneration ||
+          requestedAtCreationVersion !== tabCreationVersion ||
+          tabStateVersion !== closeVersion
+        ) return;
         applyTabsState(state, { allowEmpty: true });
       })
       .catch(() => browserClose(backendSessionId(tabId)).catch(() => {}));
     const index = tabs.findIndex((tab) => tab.id === tabId);
     const nextTabs = tabs.filter((tab) => tab.id !== tabId);
-    tabStateVersion += 1;
+    tabStateVersion = closeVersion;
     tabs = nextTabs;
     saveTabs(nextTabs);
     if (nextTabs.length === 0) {

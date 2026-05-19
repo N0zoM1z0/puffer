@@ -337,6 +337,37 @@ test("Browser tab close control is a native button", async ({ page }) => {
   await expect(page.locator(".pf-browser-tab")).toHaveCount(1);
 });
 
+test("late Browser close-tab responses do not drop newer tabs", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  daemon.delayResponse(
+    "browser_agent",
+    (request) => request.params.action === "close" && request.params.tabId === "tab-1",
+    160
+  );
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openRegressionAgent(page);
+  await openAgentPanel(page, "Browser");
+  await daemon.waitForRequest("browser_open", (request) =>
+    request.params.sessionId === "session-browser:browser:tab-1"
+  );
+  await page.getByRole("button", { name: "New tab" }).click();
+  await daemon.waitForRequest("browser_agent", (candidate) =>
+    candidate.params.action === "open" && candidate.params.tabId === "tab-2"
+  );
+
+  await page.getByRole("button", { name: "Close tab" }).first().click();
+  await page.getByRole("button", { name: "New tab" }).click();
+  await daemon.waitForRequest("browser_agent", (candidate) =>
+    candidate.params.action === "open" && candidate.params.tabId === "tab-3"
+  );
+
+  await expect(page.locator(".pf-browser-tab")).toHaveCount(2);
+  await page.waitForTimeout(210);
+  await expect(page.locator(".pf-browser-tab")).toHaveCount(2);
+});
+
 test("Browser tab list event can clear stale tabs", async ({ page }) => {
   const daemon = new FakeDaemon();
   await daemon.install(page);
