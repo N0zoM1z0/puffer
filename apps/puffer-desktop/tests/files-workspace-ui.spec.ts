@@ -180,6 +180,40 @@ test("Files tab preserves newer edits when a save response is late", async ({ pa
   await expect(page.locator(".file-tab.active .dirty-dot")).toBeVisible();
 });
 
+test("Files tab preserves edits typed while an external reload is pending", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openRegressionAgent(page);
+  await openFilesPanel(page);
+  await daemon.waitForRequest("fs_watch");
+
+  const editor = page.getByLabel("Edit file contents");
+  await expect(editor).toHaveValue("fn main() {}\n");
+
+  daemon.delayResponse(
+    "read_file",
+    (request) => request.params.path === "/tmp/puffer/src/main.rs",
+    220
+  );
+  daemon.emit("workspace:fs:changed", {
+    watchId: "watch-fixture",
+    paths: ["/tmp/puffer/src/main.rs"]
+  });
+  await daemon.waitForRequest(
+    "read_file",
+    (request) => request.params.path === "/tmp/puffer/src/main.rs"
+  );
+
+  const draft = "fn main() {\n    println!(\"keep my edit\");\n}\n";
+  await editor.fill(draft);
+  await page.waitForTimeout(260);
+
+  await expect(editor).toHaveValue(draft);
+  await expect(page.locator(".file-tab.active .dirty-dot")).toBeVisible();
+});
+
 test("Files tab clears saving state after switching tabs during save", async ({ page }) => {
   const daemon = new FakeDaemon();
   daemon.delayResponse(

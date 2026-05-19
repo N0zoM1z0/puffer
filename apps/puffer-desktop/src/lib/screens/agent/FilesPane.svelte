@@ -286,6 +286,7 @@
     if (isTabDirty(target)) return;
     try {
       const result = await readFile(target);
+      if (isTabDirty(target)) return;
       if (activePath === target) {
         cacheFileResult(result, true);
       }
