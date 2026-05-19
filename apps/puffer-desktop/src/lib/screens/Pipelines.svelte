@@ -112,6 +112,7 @@
   let localDraftHydrated = $state(false);
   let triggerDrafts = $state<Record<string, TriggerDraft>>({});
   let toolInputDrafts = $state<Record<string, string>>({});
+  let nodeIdDrafts = $state<Record<string, string>>({});
   let pendingRemoveNodeId = $state<string | null>(null);
   let saveNotice = $state("Draft changes are local until workflow save lands in the daemon.");
 
@@ -560,6 +561,45 @@
       return { ...item, pipeline: { ...item.pipeline, nodes } };
     });
     selectedNodeId = workflow.pipeline.nodes.find((node) => node.id !== removeId)?.id ?? null;
+  }
+
+  function nodeIdText(node: EditablePipelineNode): string {
+    return nodeIdDrafts[node.id] ?? node.id;
+  }
+
+  function setNodeIdDraft(id: string, value: string) {
+    nodeIdDrafts = { ...nodeIdDrafts, [id]: value };
+  }
+
+  function nodeIdError(node: EditablePipelineNode): string | null {
+    const draft = nodeIdText(node).trim();
+    if (!draft) return "Node id is required.";
+    if (draft === node.id) return null;
+    if (workflow?.pipeline.nodes.some((candidate) => candidate.id === draft)) {
+      return "Node id must be unique.";
+    }
+    return null;
+  }
+
+  function applyNodeId(node: EditablePipelineNode) {
+    const nextId = nodeIdText(node).trim();
+    if (!nextId || nextId === node.id || nodeIdError(node)) return;
+    const oldId = node.id;
+    updateCurrentWorkflow((item) => ({
+      ...item,
+      pipeline: {
+        ...item.pipeline,
+        nodes: item.pipeline.nodes.map((candidate) => ({
+          ...candidate,
+          id: candidate.id === oldId ? nextId : candidate.id,
+          depends_on: (candidate.depends_on ?? []).map((dep) => (dep === oldId ? nextId : dep))
+        }))
+      }
+    }));
+    const nextDrafts = { ...nodeIdDrafts };
+    delete nextDrafts[oldId];
+    nodeIdDrafts = nextDrafts;
+    selectedNodeId = nextId;
   }
 
   function dependentNodes(nodeId: string): EditablePipelineNode[] {
@@ -1105,7 +1145,26 @@
               {/if}
               <label>
                 <span>Node id</span>
-                <input value={selectedNode.id} disabled />
+                <div class="pf-editor-node-id-row">
+                  <input
+                    value={nodeIdText(selectedNode)}
+                    aria-invalid={Boolean(nodeIdError(selectedNode))}
+                    oninput={(event) => setNodeIdDraft(selectedNode.id, event.currentTarget.value)}
+                  />
+                  <button
+                    type="button"
+                    class="sc-btn"
+                    data-variant="outline"
+                    data-size="sm"
+                    disabled={Boolean(nodeIdError(selectedNode)) || nodeIdText(selectedNode).trim() === selectedNode.id}
+                    onclick={() => applyNodeId(selectedNode)}
+                  >
+                    Apply
+                  </button>
+                </div>
+                {#if nodeIdError(selectedNode)}
+                  <small class="pf-editor-field-error">{nodeIdError(selectedNode)}</small>
+                {/if}
               </label>
               <label>
                 <span>Agent name</span>
@@ -1534,6 +1593,13 @@
     display: flex;
     justify-content: flex-end;
     gap: 6px;
+  }
+
+  .pf-editor-node-id-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px;
+    align-items: center;
   }
 
   .pf-editor-inline {

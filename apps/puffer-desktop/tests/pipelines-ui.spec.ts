@@ -295,3 +295,54 @@ test("edited workflow can be exported as JSON", async ({ page }) => {
   expect(exported.pipeline.nodes).toHaveLength(3);
   await expect(page.getByText("Workflow JSON copied to clipboard.")).toBeVisible();
 });
+
+test("node id rename updates downstream dependencies", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: (value: string) => {
+          (window as typeof window & { __copiedWorkflowJson?: string }).__copiedWorkflowJson = value;
+          return Promise.resolve();
+        }
+      }
+    });
+  });
+  const daemon = new FakeDaemon({ workspaceRoot: "/tmp/puffer-workspace" });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: "Pipelines" }).click();
+  await daemon.waitForRequest("workflow_list");
+  await page.locator(".pf-pipe-graph").getByRole("button", { name: /Claude reviewer/ }).click();
+
+  const inspector = page.locator(".pf-editor-inspector");
+  await inspector.getByLabel("Node id").fill("claude-final-review");
+  await inspector.getByRole("button", { name: "Apply" }).click();
+  await expect(inspector.getByLabel("Node id")).toHaveValue("claude-final-review");
+
+  await page.getByRole("button", { name: "Copy JSON" }).click();
+  const copied = await page.evaluate(() => (window as typeof window & { __copiedWorkflowJson?: string }).__copiedWorkflowJson ?? "");
+  const exported = JSON.parse(copied);
+  expect(exported.pipeline.nodes.some((node: { id: string }) => node.id === "claude-final-review")).toBe(true);
+  const pufferNode = exported.pipeline.nodes.find((node: { id: string }) => node.id === "puffer-ship");
+  expect(pufferNode.depends_on).toEqual(["claude-final-review"]);
+});
+
+test("node id rename validates empty and duplicate ids", async ({ page }) => {
+  const daemon = new FakeDaemon({ workspaceRoot: "/tmp/puffer-workspace" });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: "Pipelines" }).click();
+  await daemon.waitForRequest("workflow_list");
+  const inspector = page.locator(".pf-editor-inspector");
+
+  await inspector.getByLabel("Node id").fill("");
+  await expect(inspector.getByText("Node id is required.")).toBeVisible();
+  await expect(inspector.getByRole("button", { name: "Apply" })).toBeDisabled();
+
+  await inspector.getByLabel("Node id").fill("claude-review");
+  await expect(inspector.getByText("Node id must be unique.")).toBeVisible();
+  await expect(inspector.getByRole("button", { name: "Apply" })).toBeDisabled();
+});
