@@ -626,10 +626,10 @@
     const submittedContent = draftContent;
     try {
       const result = await writeFile(target, submittedContent);
+      const latestDraft = draftCache.get(target);
+      cacheFileResult(result, latestDraft == null || latestDraft === submittedContent);
+      pinTab(target);
       if (activePath === target) {
-        const latestDraft = draftCache.get(target);
-        cacheFileResult(result, latestDraft == null || latestDraft === submittedContent);
-        pinTab(target);
         clearLspState();
       }
       void refreshDir(parentPath(target));
