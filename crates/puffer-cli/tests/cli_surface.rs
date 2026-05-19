@@ -154,6 +154,20 @@ fn browser_tab_help_lists_new_subcommand() {
 }
 
 #[test]
+fn browser_tab_close_rejects_unknown_tab() {
+    let (_tempdir, workspace, puffer_home) = configured_workspace();
+    let output = run_puffer(
+        &workspace,
+        &puffer_home,
+        &["browser", "tab", "close", "missing-tab"],
+    );
+
+    assert!(!output.status.success(), "{output:?}");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("no browser tab `missing-tab`"), "{stderr}");
+}
+
+#[test]
 fn desktop_api_help_is_hidden_but_available() {
     let (_tempdir, workspace, puffer_home) = configured_workspace();
     let output = run_puffer(&workspace, &puffer_home, &["desktop-api", "--help"]);

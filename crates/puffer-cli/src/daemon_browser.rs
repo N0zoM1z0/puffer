@@ -266,8 +266,17 @@ impl BrowserRegistry {
         root_session_id: &str,
         tab_id: &str,
     ) -> Result<BrowserTabsState> {
+        if self
+            .tabs
+            .lock()
+            .unwrap()
+            .close_tab(root_session_id, tab_id)
+            .is_none()
+        {
+            bail!("no browser tab `{tab_id}` for session `{root_session_id}`");
+        }
         let backend_id = backend_session_id(root_session_id, tab_id);
-        self.close_page_session(&backend_id, true);
+        self.close_page_session(&backend_id, false);
         Ok(self.list_tabs(root_session_id))
     }
 
