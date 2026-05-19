@@ -288,6 +288,36 @@ test("MCP settings block duplicate server IDs before saving", async ({ page }) =
   expect(daemon.requests.filter((request) => request.method === "add_mcp_server")).toHaveLength(0);
 });
 
+test("MCP settings lock the add form while a server is saving", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  daemon.delayResponse("add_mcp_server", () => true, 220);
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "MCP Servers" }).click();
+  await expect(page.locator(".pf-mcp-card .title").filter({ hasText: "Playwright" })).toBeVisible();
+
+  await page.getByLabel("ID").fill("github");
+  await page.getByLabel("Name").fill("GitHub");
+  await page.getByLabel("Command").fill("npx");
+  await page.getByLabel("Arguments").fill("@modelcontextprotocol/server-github");
+  await page.getByLabel("Description").fill("GitHub issue and PR tools");
+  await page.getByRole("button", { name: "Add server" }).click();
+  await daemon.waitForRequest("add_mcp_server");
+
+  await expect(page.getByLabel("ID")).toBeDisabled();
+  await expect(page.getByLabel("Name")).toBeDisabled();
+  await expect(page.getByLabel("Transport")).toBeDisabled();
+  await expect(page.getByLabel("Scope")).toBeDisabled();
+  await expect(page.getByLabel("Command")).toBeDisabled();
+  await expect(page.getByLabel("Arguments")).toBeDisabled();
+  await expect(page.getByLabel("Description")).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Adding…" })).toBeDisabled();
+
+  await expect(page.getByText("Added github")).toBeVisible();
+});
+
 test("MCP settings ignore stale server loads after workspace refresh", async ({ page }) => {
   const daemon = new FakeDaemon();
   daemon.delayResponse("list_mcp_servers", () => true, 260);

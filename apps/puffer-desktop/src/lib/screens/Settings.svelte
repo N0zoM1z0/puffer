@@ -728,6 +728,7 @@
                 class="sc-input"
                 placeholder="github"
                 value={mcpForm.id}
+                disabled={mcpSaving}
                 oninput={(e) => (mcpForm.id = (e.currentTarget as HTMLInputElement).value)}
               />
             </label>
@@ -737,6 +738,7 @@
                 class="sc-input"
                 placeholder="GitHub"
                 value={mcpForm.displayName}
+                disabled={mcpSaving}
                 oninput={(e) => (mcpForm.displayName = (e.currentTarget as HTMLInputElement).value)}
               />
             </label>
@@ -745,6 +747,7 @@
               <select
                 class="sc-input"
                 value={mcpForm.transport}
+                disabled={mcpSaving}
                 onchange={(e) =>
                   (mcpForm.transport = (e.currentTarget as HTMLSelectElement).value as "stdio" | "sse" | "http")}
               >
@@ -758,6 +761,7 @@
               <select
                 class="sc-input"
                 value={mcpForm.scope}
+                disabled={mcpSaving}
                 onchange={(e) =>
                   (mcpForm.scope = (e.currentTarget as HTMLSelectElement).value as "local" | "user")}
               >
@@ -774,6 +778,7 @@
                 ? "npx @modelcontextprotocol/server-github"
                 : "http://127.0.0.1:3000/mcp"}
               value={mcpForm.commandOrUrl}
+              disabled={mcpSaving}
               oninput={(e) => (mcpForm.commandOrUrl = (e.currentTarget as HTMLInputElement).value)}
             />
           </label>
@@ -784,6 +789,7 @@
                 class="sc-input"
                 placeholder="--flag value"
                 value={mcpForm.args}
+                disabled={mcpSaving}
                 oninput={(e) => (mcpForm.args = (e.currentTarget as HTMLInputElement).value)}
               />
             </label>
@@ -794,6 +800,7 @@
               class="sc-input"
               placeholder="Optional note"
               value={mcpForm.description}
+              disabled={mcpSaving}
               oninput={(e) => (mcpForm.description = (e.currentTarget as HTMLInputElement).value)}
             />
           </label>
