@@ -662,8 +662,12 @@ fn add_mcp_server_from_json(
     if transport != "stdio" && transport != "sse" && transport != "http" {
         anyhow::bail!("unsupported MCP transport `{transport}`");
     }
-    let endpoint = input.endpoint.unwrap_or_default();
-    let target = input.target.unwrap_or_default();
+    let mut endpoint = input.endpoint.unwrap_or_default();
+    let mut target = input.target.unwrap_or_default();
+    if transport != "stdio" && endpoint.trim().is_empty() && !target.trim().is_empty() {
+        endpoint = target.trim().to_string();
+        target = String::new();
+    }
     validate_mcp_target(&transport, &endpoint, &target)?;
     let spec = McpServerSpec {
         id: name.to_string(),

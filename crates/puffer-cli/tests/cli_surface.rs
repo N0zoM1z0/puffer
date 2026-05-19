@@ -400,6 +400,23 @@ fn mcp_add_rejects_empty_targets_before_writing_manifest() {
     assert!(!workspace
         .join(".puffer/resources/mcp_servers/empty-json.yaml")
         .exists());
+
+    let http_target_json = run_puffer(
+        &workspace,
+        &puffer_home,
+        &[
+            "mcp",
+            "add-json",
+            "http-target-json",
+            r#"{"transport":"http","target":"https://example.invalid/mcp"}"#,
+        ],
+    );
+    assert!(http_target_json.status.success(), "{http_target_json:?}");
+    let http_target_manifest =
+        fs::read_to_string(workspace.join(".puffer/resources/mcp_servers/http-target-json.yaml"))
+            .expect("http target manifest");
+    assert!(http_target_manifest.contains("endpoint: https://example.invalid/mcp"));
+    assert!(http_target_manifest.contains("target: ''"));
 }
 
 #[test]
