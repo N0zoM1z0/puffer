@@ -106,7 +106,7 @@
 
   let projects = $derived<MockProject[]>(groups.map(projectFromGroup));
   let agents = $derived<MockAgent[]>(
-    groups.flatMap((g) => g.sessions.slice(0, 6).map((s) => agentFromSession(s, g.id)))
+    groups.flatMap((g) => g.sessions.map((s) => agentFromSession(s, g.id)))
   );
 
   function normalizeSearch(value: string): string {

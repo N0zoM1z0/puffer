@@ -48,6 +48,37 @@ test("workspace search filters projects and agents", async ({ page }) => {
   await expect(workspace.getByText("Beta browser audit")).toBeVisible();
 });
 
+test("workspace search includes sessions beyond the first six in a project", async ({
+  page
+}) => {
+  const daemon = new FakeDaemon({
+    sessions: Array.from({ length: 7 }, (_, index) => {
+      const ordinal = index + 1;
+      const title = ordinal === 7 ? "Seventh hidden audit" : `Workspace audit ${ordinal}`;
+      return {
+        sessionId: `session-workspace-${ordinal}`,
+        displayName: title,
+        title,
+        cwd: "/tmp/puffer-many",
+        folderPath: "/tmp/puffer-many",
+        updatedAtMs: baseTime - index * 1_000,
+        createdAtMs: baseTime - 60_000 - index * 1_000,
+        eventCount: ordinal
+      };
+    })
+  });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  const workspace = page.locator(".pf-pw-list");
+  await page.getByLabel("Search workspace").fill("seventh hidden");
+  await expect(
+    workspace.getByRole("button", { name: /^Seventh hidden audit\b/ })
+  ).toBeVisible();
+  await expect(workspace.getByText("puffer-many")).toBeVisible();
+  await expect(workspace.getByText("Workspace audit 1")).toHaveCount(0);
+});
+
 test("workspace board renders daemon session activity states", async ({ page }) => {
   const daemon = new FakeDaemon({
     sessions: [
