@@ -300,6 +300,41 @@ test("settings panes follow refreshed workspace state", async ({ page }) => {
   await expect(refreshedRow.locator("select")).toHaveValue("deny");
 });
 
+test("permissions settings ignore stale save results after workspace refresh", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  daemon.delayResponse("save_permissions", () => true, 240);
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Permissions" }).click();
+  await expect(page.getByText("Stored at")).toContainText("/tmp/puffer/.puffer/permissions.json");
+
+  const firstRow = page.locator(".pf-perm-row").nth(1);
+  await firstRow.locator("select").selectOption("allow");
+  await page.getByRole("button", { name: "Save" }).click();
+  await daemon.waitForRequest("save_permissions");
+
+  daemon.setWorkspaceRoot("/tmp/puffer-next");
+  daemon.setPermissions({ browser_open: "deny" });
+  await page.getByRole("button", { name: "General" }).click();
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await expect(page.locator(".pf-settings-row").filter({ hasText: "Workspace root" })).toContainText(
+    "/tmp/puffer-next"
+  );
+
+  await page.getByRole("button", { name: "Permissions" }).click();
+  await expect(page.getByText("Stored at")).toContainText("/tmp/puffer-next/.puffer/permissions.json");
+  const refreshedRow = page.locator(".pf-perm-row").nth(1);
+  await expect(refreshedRow.locator("input")).toHaveValue("browser_open");
+  await expect(refreshedRow.locator("select")).toHaveValue("deny");
+
+  await page.waitForTimeout(280);
+  await expect(page.getByText("Stored at")).toContainText("/tmp/puffer-next/.puffer/permissions.json");
+  await expect(refreshedRow.locator("input")).toHaveValue("browser_open");
+  await expect(refreshedRow.locator("select")).toHaveValue("deny");
+});
+
 test("remember last session persists and restores agent detail", async ({ page }) => {
   const daemon = new FakeDaemon();
   await daemon.install(page);

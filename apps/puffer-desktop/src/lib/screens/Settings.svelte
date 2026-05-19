@@ -366,6 +366,7 @@
       permissionError = validationError;
       return;
     }
+    const generation = permissionLoadGeneration;
     permissionSaving = true;
     permissionError = null;
     try {
@@ -376,15 +377,19 @@
         tools[tool] = row.mode;
       }
       const snap = await savePermissions(tools);
+      if (generation !== permissionLoadGeneration) return;
       permissionSnapshot = snap;
       permissionRows = Object.entries(snap.tools)
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([tool, mode]) => ({ tool, mode }));
       permissionDirty = false;
     } catch (e) {
+      if (generation !== permissionLoadGeneration) return;
       permissionError = (e as Error).message ?? String(e);
     } finally {
-      permissionSaving = false;
+      if (generation === permissionLoadGeneration) {
+        permissionSaving = false;
+      }
     }
   }
 
@@ -454,6 +459,7 @@
     permissionSnapshot = null;
     permissionRows = [];
     permissionLoading = false;
+    permissionSaving = false;
     permissionError = null;
     permissionDirty = false;
 
