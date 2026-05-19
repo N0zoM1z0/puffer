@@ -35,6 +35,28 @@ test("default model cannot be saved before provider models load", async ({ page 
   });
 });
 
+test("default model controls are locked while saving", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  daemon.delayResponse("update_config", () => true, 3_000);
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Providers" }).click();
+
+  const pane = page.locator(".pf-settings-pane");
+  const providerSelect = pane.getByLabel("Provider");
+  const modelSelect = pane.getByLabel("Model");
+  await providerSelect.selectOption("anthropic");
+  await expect(modelSelect).toBeEnabled();
+
+  await pane.getByRole("button", { name: "Save default" }).click();
+  await daemon.waitForRequest("update_config");
+
+  await expect(providerSelect).toBeDisabled({ timeout: 250 });
+  await expect(modelSelect).toBeDisabled({ timeout: 250 });
+});
+
 test("advertised settings shortcut opens settings", async ({ page }) => {
   const daemon = new FakeDaemon();
   await daemon.install(page);

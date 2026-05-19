@@ -541,6 +541,7 @@
             <select
               class="sc-input"
               value={modelPickerProvider}
+              disabled={modelSaving}
               onchange={(e) => {
                 modelPickerProvider = (e.currentTarget as HTMLSelectElement).value;
                 modelPickerModel = "";
@@ -559,7 +560,7 @@
               class="sc-input"
               value={modelPickerModel}
               onchange={(e) => (modelPickerModel = (e.currentTarget as HTMLSelectElement).value)}
-              disabled={!modelPickerProvider || modelPickerLoading}
+              disabled={!modelPickerProvider || modelPickerLoading || modelSaving}
             >
               <option value="">{modelPickerLoading ? "Loading models..." : "— pick a model —"}</option>
               {#each (providerModels[modelPickerProvider] ?? []) as m (m.id)}
