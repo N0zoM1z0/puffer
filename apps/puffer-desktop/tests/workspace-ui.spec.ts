@@ -32,14 +32,22 @@ test("workspace search filters projects and agents", async ({ page }) => {
   await daemon.open(page);
 
   const workspace = page.locator(".pf-pw-list");
-  await expect(workspace.getByText("puffer-alpha")).toBeVisible();
-  await expect(workspace.getByText("puffer-beta")).toBeVisible();
+  await expect(
+    workspace.locator(".pf-pw-project").filter({ hasText: "/tmp/puffer-alpha" })
+  ).toBeVisible();
+  await expect(
+    workspace.locator(".pf-pw-project").filter({ hasText: "/tmp/puffer-beta" })
+  ).toBeVisible();
 
   await page.getByLabel("Search workspace").fill("beta browser");
   await expect(workspace.getByText("Beta browser audit")).toBeVisible();
-  await expect(workspace.getByText("puffer-beta")).toBeVisible();
+  await expect(
+    workspace.locator(".pf-pw-project").filter({ hasText: "/tmp/puffer-beta" })
+  ).toBeVisible();
   await expect(workspace.getByText("Alpha planner")).toHaveCount(0);
-  await expect(workspace.getByText("puffer-alpha")).toHaveCount(0);
+  await expect(
+    workspace.locator(".pf-pw-project").filter({ hasText: "/tmp/puffer-alpha" })
+  ).toHaveCount(0);
 
   await page.getByLabel("Search workspace").fill("missing session");
   await expect(workspace.getByText("No workspace results")).toBeVisible();
@@ -75,7 +83,9 @@ test("workspace search includes sessions beyond the first six in a project", asy
   await expect(
     workspace.getByRole("button", { name: /^Seventh hidden audit\b/ })
   ).toBeVisible();
-  await expect(workspace.getByText("puffer-many")).toBeVisible();
+  await expect(
+    workspace.locator(".pf-pw-project").filter({ hasText: "/tmp/puffer-many" })
+  ).toBeVisible();
   await expect(workspace.getByText("Workspace audit 1")).toHaveCount(0);
 });
 
