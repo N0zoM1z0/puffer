@@ -214,6 +214,28 @@ test("Files tab preserves edits typed while an external reload is pending", asyn
   await expect(page.locator(".file-tab.active .dirty-dot")).toBeVisible();
 });
 
+test("Files tab ignores late restored tabs after the user opens a file", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  daemon.delayResponse("load_file_tabs", () => true, 220);
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openRegressionAgent(page);
+  await openFilesPanel(page);
+  await page.locator(".tree .row", { hasText: "src" }).click();
+  await page.locator(".tree .row", { hasText: "lib.rs" }).click();
+  await daemon.waitForRequest(
+    "read_file",
+    (request) => request.params.path === "/tmp/puffer/src/lib.rs"
+  );
+  await expect(page.locator(".file-tab.active")).toContainText("lib.rs");
+
+  await page.waitForTimeout(260);
+
+  await expect(page.locator(".file-tab.active")).toContainText("lib.rs");
+  await expect(page.getByLabel("Edit file contents")).toHaveValue("pub fn fixture() {}\n");
+});
+
 test("Files tab clears saving state after switching tabs during save", async ({ page }) => {
   const daemon = new FakeDaemon();
   daemon.delayResponse(

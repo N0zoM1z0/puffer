@@ -68,6 +68,7 @@
   let fileTabsReady = $state(false);
   let fileTabsSaveTimer: ReturnType<typeof setTimeout> | null = null;
   let lastOpenPath: string | null = null;
+  let fileTabMutationGeneration = 0;
 
   // Root is derived from cwd — switching sessions resets everything.
   let root = $derived(cwd);
@@ -98,6 +99,7 @@
       activeError = null;
       activeSize = 0;
       draftContent = "";
+      fileTabMutationGeneration += 1;
       savingPaths = new Set();
       saveErrorsByPath = new Map();
       saveError = null;
@@ -302,9 +304,11 @@
       fileTabsReady = true;
       return;
     }
+    const restoreStartedAt = fileTabMutationGeneration;
     try {
       const state = await loadFileTabs(expectedSessionId);
       if (destroyed || root !== expectedRoot || sessionId !== expectedSessionId) return;
+      if (restoreStartedAt !== fileTabMutationGeneration) return;
       const restoredTabs = state.tabs.map((tab) => tabFor(tab.path, 0, tab.pinned));
       openTabs = restoredTabs;
       const restoredActive =
@@ -489,6 +493,7 @@
   }
 
   async function openFile(path: string, size: number, options: OpenFileOptions = {}) {
+    fileTabMutationGeneration += 1;
     const pinned = options.pinned ?? false;
     const existingIndex = openTabs.findIndex((tab) => tab.path === path);
     const previewIndex = openTabs.findIndex((tab) => !tab.pinned && !isTabDirty(tab.path));
@@ -556,6 +561,7 @@
     if (isTabDirty(path) && !window.confirm(`Discard unsaved changes to ${fileName(path)}?`)) {
       return;
     }
+    fileTabMutationGeneration += 1;
 
     const closingIndex = openTabs.findIndex((tab) => tab.path === path);
     const nextTabs = openTabs.filter((tab) => tab.path !== path);
