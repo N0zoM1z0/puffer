@@ -91,3 +91,17 @@ test("trigger type switch preserves prior trigger fields", async ({ page }) => {
   await triggerType.getByRole("button", { name: "Cron" }).click();
   await expect(cronInput).toHaveValue("15 9 * * 1-5");
 });
+
+test("wiring prevents dependencies that would create cycles", async ({ page }) => {
+  const daemon = new FakeDaemon({ workspaceRoot: "/tmp/puffer-workspace" });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: "Pipelines" }).click();
+  await daemon.waitForRequest("workflow_list");
+
+  const wiring = page.locator(".pf-editor-wiring");
+  const pufferDependency = wiring.locator(".pf-wire-row").filter({ hasText: "Puffer shipper" }).locator("input");
+  await expect(pufferDependency).toBeDisabled();
+  await expect(pufferDependency).not.toBeChecked();
+});

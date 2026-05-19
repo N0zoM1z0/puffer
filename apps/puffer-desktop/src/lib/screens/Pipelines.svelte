@@ -527,6 +527,7 @@
   function toggleDependency(targetId: string, dependencyId: string, checked: boolean) {
     const target = workflow?.pipeline.nodes.find((node) => node.id === targetId);
     if (!target || target.id === dependencyId) return;
+    if (checked && dependencyCreatesCycle(targetId, dependencyId)) return;
     const deps = new Set(target.depends_on ?? []);
     if (checked) deps.add(dependencyId);
     else deps.delete(dependencyId);
@@ -535,7 +536,24 @@
 
   function connectSelectedTo(targetId: string) {
     if (!selectedNode || selectedNode.id === targetId) return;
+    if (dependencyCreatesCycle(targetId, selectedNode.id)) return;
     toggleDependency(targetId, selectedNode.id, true);
+  }
+
+  function dependencyCreatesCycle(targetId: string, dependencyId: string): boolean {
+    if (!workflow || targetId === dependencyId) return true;
+    const byId = new Map(workflow.pipeline.nodes.map((node) => [node.id, node]));
+    const seen = new Set<string>();
+    const stack = [dependencyId];
+    while (stack.length > 0) {
+      const current = stack.pop();
+      if (!current || seen.has(current)) continue;
+      if (current === targetId) return true;
+      seen.add(current);
+      const currentNode = byId.get(current);
+      for (const next of currentNode?.depends_on ?? []) stack.push(next);
+    }
+    return false;
   }
 
   function toolsText(node: EditablePipelineNode): string {
@@ -963,10 +981,13 @@
                 <strong>{selectedNode.agent ?? selectedNode.id}</strong>
               </div>
               {#each workflow.pipeline.nodes.filter((node) => node.id !== selectedNode?.id) as node (node.id)}
+                {@const dependencyChecked = (selectedNode.depends_on ?? []).includes(node.id)}
+                {@const cycleBlocked = !dependencyChecked && dependencyCreatesCycle(selectedNode.id, node.id)}
                 <label class="pf-wire-row">
                   <input
                     type="checkbox"
-                    checked={(selectedNode.depends_on ?? []).includes(node.id)}
+                    checked={dependencyChecked}
+                    disabled={cycleBlocked}
                     onchange={(event) => toggleDependency(selectedNode.id, node.id, event.currentTarget.checked)}
                   />
                   <span class="pf-wire-provider" data-provider={node.type}>{providerMeta(node.type).short}</span>
@@ -978,7 +999,12 @@
                 <span>Send selected output to</span>
               </div>
               {#each workflow.pipeline.nodes.filter((node) => node.id !== selectedNode?.id) as node (node.id)}
-                <button type="button" class="pf-wire-connect" onclick={() => connectSelectedTo(node.id)}>
+                <button
+                  type="button"
+                  class="pf-wire-connect"
+                  disabled={dependencyCreatesCycle(node.id, selectedNode.id)}
+                  onclick={() => connectSelectedTo(node.id)}
+                >
                   <Icon name="link" size={12} />
                   {node.agent ?? node.id}
                 </button>
