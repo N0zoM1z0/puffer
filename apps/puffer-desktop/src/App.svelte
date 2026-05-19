@@ -1132,13 +1132,17 @@
   async function renameSelectedSession(title: string) {
     if (!selectedSession) return;
     const previous = selectedSession;
+    const targetSessionId = selectedSession.id;
+    const loadGeneration = sessionLoadGeneration;
     try {
-      const detail = await renameSession(selectedSession.id, title);
+      const detail = await renameSession(targetSessionId, title);
+      await refreshGroups();
+      if (selectedSession?.id !== targetSessionId || sessionLoadGeneration !== loadGeneration) return;
       selectedSession = detail.session;
       sessionDetail = detail;
-      await refreshGroups();
       statusMessage = title.trim() ? "Session title updated." : "Session title reset.";
     } catch (error) {
+      if (selectedSession?.id !== targetSessionId || sessionLoadGeneration !== loadGeneration) return;
       selectedSession = previous;
       statusMessage = `Failed to rename session: ${errorText(error)}`;
       throw error;

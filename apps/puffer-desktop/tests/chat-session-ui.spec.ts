@@ -1133,6 +1133,77 @@ test("session title edit saves through the daemon", async ({ page }) => {
   await expect(page.getByRole("button", { name: /Renamed mission/ }).first()).toBeVisible();
 });
 
+test("late session title rename response does not replace newly selected session", async ({
+  page
+}) => {
+  const daemon = new FakeDaemon({
+    sessions: [
+      {
+        sessionId: "session-title-alpha",
+        displayName: "Alpha rename",
+        title: "Alpha rename",
+        cwd: "/tmp/puffer",
+        folderPath: "/tmp/puffer",
+        updatedAtMs: baseTime,
+        createdAtMs: baseTime - 60_000,
+        eventCount: 1,
+        timeline: [
+          {
+            kind: "assistant_message",
+            id: "alpha-rename-seed",
+            text: "Alpha rename transcript",
+            createdAtMs: baseTime - 30_000
+          }
+        ]
+      },
+      {
+        sessionId: "session-title-beta",
+        displayName: "Beta current",
+        title: "Beta current",
+        cwd: "/tmp/puffer",
+        folderPath: "/tmp/puffer",
+        updatedAtMs: baseTime - 1_000,
+        createdAtMs: baseTime - 120_000,
+        eventCount: 1,
+        timeline: [
+          {
+            kind: "assistant_message",
+            id: "beta-current-seed",
+            text: "Beta current transcript",
+            createdAtMs: baseTime - 90_000
+          }
+        ]
+      }
+    ]
+  });
+  daemon.delayResponse(
+    "rename_session",
+    (request) => request.params.sessionId === "session-title-alpha",
+    220
+  );
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openSession(page, /Alpha rename/);
+  await expect(page.getByText("Alpha rename transcript")).toBeVisible();
+  await page.getByRole("button", { name: "Edit session title" }).click();
+  await page.getByLabel("Session title").fill("Renamed alpha");
+  await page.getByRole("button", { name: "Save title" }).click();
+  await daemon.waitForRequest(
+    "rename_session",
+    (request) => request.params.sessionId === "session-title-alpha"
+  );
+
+  await openSession(page, /Beta current/);
+  await expect(page.locator(".primary-title")).toHaveText("Beta current");
+  await expect(page.getByText("Beta current transcript")).toBeVisible();
+
+  await page.waitForTimeout(280);
+  await expect(page.locator(".primary-title")).toHaveText("Beta current");
+  await expect(page.getByText("Beta current transcript")).toBeVisible();
+  await expect(page.getByText("Alpha rename transcript")).toHaveCount(0);
+});
+
 test("auto recap does not start a second turn while one is running", async ({ page }) => {
   await page.clock.install({ time: baseTime });
   const daemon = new FakeDaemon();
