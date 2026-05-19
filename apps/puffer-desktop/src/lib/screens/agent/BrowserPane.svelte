@@ -514,18 +514,27 @@
   async function submitUrl(event: SubmitEvent) {
     event.preventDefault();
     if (!connected || !activeTabId) return;
+    const tabId = activeTabId;
+    const targetUrl = urlDraft;
+    const navigationGeneration = sessionGeneration;
     error = null;
     try {
-      updateTab(activeTabId, {
-        url: urlDraft,
+      updateTab(tabId, {
+        url: targetUrl,
         status: "Loading",
         loading: true,
-        favicon: faviconFor(urlDraft)
+        favicon: faviconFor(targetUrl)
       });
-      await browserNavigate(activeBackendSessionId(), urlDraft);
+      await browserNavigate(backendSessionId(tabId), targetUrl);
     } catch (err) {
-      error = String(err);
-      updateTab(activeTabId, { error, status: "Chrome error" });
+      if (disposed || navigationGeneration !== sessionGeneration) return;
+      const message = String(err);
+      updateTab(tabId, { error: message, status: "Chrome error", loading: false });
+      if (activeTabId === tabId) {
+        error = message;
+        status = "Chrome error";
+        loading = false;
+      }
     }
   }
 
