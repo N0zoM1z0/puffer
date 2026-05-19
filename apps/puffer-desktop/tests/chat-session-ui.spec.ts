@@ -574,6 +574,38 @@ test("question prompts submit only once while resolution is pending", async ({ p
   expect(daemon.requests.filter((request) => request.method === "resolve_user_question")).toHaveLength(1);
 });
 
+test("freeform-only questions render and submit typed answers", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openSession(page, /^Browser regression\b/);
+  daemon.emit("session:session-browser:event", {
+    type: "user-question-request",
+    turnId: "turn-question",
+    requestId: "question-freeform",
+    questions: [
+      {
+        header: "Clarify",
+        question: "What should I name the branch?",
+        options: []
+      }
+    ]
+  });
+
+  await expect(page.getByText("What should I name the branch?")).toBeVisible();
+  await page.getByPlaceholder("Type another answer").fill("fix/gui-races");
+  await page.getByRole("button", { name: "Send answer" }).click();
+
+  const request = await daemon.waitForRequest("resolve_user_question");
+  expect(request.params).toMatchObject({
+    turnId: "turn-question",
+    requestId: "question-freeform",
+    answers: { "What should I name the branch?": "fix/gui-races" },
+    annotations: {}
+  });
+});
+
 test("composer sends selected thinking option with the turn request", async ({ page }) => {
   const daemon = new FakeDaemon();
   await daemon.install(page);
