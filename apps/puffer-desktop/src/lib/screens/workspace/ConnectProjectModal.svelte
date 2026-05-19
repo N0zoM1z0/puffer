@@ -139,6 +139,17 @@
   });
   let pickerBusy = $derived(busy || pickerLoading);
 
+  function setMode(nextMode: Mode) {
+    mode = nextMode;
+    if (nextMode === "remote") {
+      pickerOpen = false;
+      pickerLoadGeneration += 1;
+      pickerLoading = false;
+      pickerError = null;
+      pickerEntries = [];
+    }
+  }
+
   $effect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !busy) onClose();
@@ -363,7 +374,7 @@
         aria-selected={mode === "local"}
         class="pf-modal-seg-btn"
         data-active={mode === "local"}
-        onclick={() => (mode = "local")}
+        onclick={() => setMode("local")}
         disabled={busy}
       >
         <Icon name="folder" size={13} />
@@ -378,7 +389,7 @@
         aria-selected={mode === "remote"}
         class="pf-modal-seg-btn"
         data-active={mode === "remote"}
-        onclick={() => (mode = "remote")}
+        onclick={() => setMode("remote")}
         disabled={busy}
       >
         <Icon name="globe" size={13} />

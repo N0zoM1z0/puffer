@@ -627,6 +627,22 @@ test("connect project remote mode exposes binary override", async ({ page }) => 
   await expect(dialog.getByLabel("Remote binary")).toHaveValue("/opt/puffer/bin/puffer");
 });
 
+test("connect project closes the local directory picker when switching to remote", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: "Connect project" }).click();
+  const dialog = page.getByRole("dialog", { name: "Connect project" });
+  await dialog.getByRole("button", { name: "Browse…" }).click();
+  await expect(dialog.getByLabel("Choose directory")).toBeVisible();
+
+  await dialog.getByRole("tab", { name: /Remote/ }).click();
+
+  await expect(dialog.getByLabel("Choose directory")).toHaveCount(0);
+  await expect(dialog.getByLabel("SSH target")).toBeVisible();
+});
+
 test("connect project directory picker ignores stale path responses", async ({ page }) => {
   const daemon = new FakeDaemon();
   daemon.delayResponse(
