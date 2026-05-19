@@ -641,11 +641,13 @@
               type="text"
               placeholder="bash, read_file, edit_file…"
               value={row.tool}
+              disabled={permissionSaving}
               oninput={(e) => updatePermissionRow(i, "tool", (e.currentTarget as HTMLInputElement).value)}
             />
             <select
               class="sc-input"
               value={row.mode}
+              disabled={permissionSaving}
               onchange={(e) => updatePermissionRow(i, "mode", (e.currentTarget as HTMLSelectElement).value)}
             >
               <option value="allow">allow</option>
@@ -660,6 +662,7 @@
               data-size="sm"
               onclick={() => removePermissionRow(i)}
               title="Remove rule"
+              disabled={permissionSaving}
             >
               <Icon name="x" size={12} />
             </button>
@@ -676,7 +679,7 @@
           class="sc-btn"
           data-variant="outline"
           data-size="sm"
-          disabled={!daemonReachable || permissionLoading}
+          disabled={!daemonReachable || permissionLoading || permissionSaving}
           onclick={addPermissionRow}
         >
           <Icon name="plus" size={12} />Add rule

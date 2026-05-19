@@ -175,6 +175,34 @@ test("permissions settings keep edits after a late list response", async ({ page
   });
 });
 
+test("permissions settings lock rule edits while saving", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  daemon.delayResponse("save_permissions", () => true, 220);
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Permissions" }).click();
+  await expect(page.getByText("Stored at")).toBeVisible();
+
+  await page.getByRole("button", { name: "Add rule" }).click();
+  const row = page.locator(".pf-perm-row").last();
+  await row.locator("input").fill("browser_open");
+  await row.locator("select").selectOption("deny");
+  await page.getByRole("button", { name: "Save" }).click();
+  await daemon.waitForRequest("save_permissions");
+
+  await expect(page.getByRole("button", { name: "Add rule" })).toBeDisabled();
+  await expect(row.locator("input")).toBeDisabled();
+  await expect(row.locator("select")).toBeDisabled();
+  await expect(row.getByRole("button", { name: "Remove rule" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Saving…" })).toBeDisabled();
+
+  await expect(page.getByRole("button", { name: "Save" })).toBeDisabled();
+  await expect(row.locator("input")).toHaveValue("browser_open");
+  await expect(row.locator("select")).toHaveValue("deny");
+});
+
 test("settings panes follow refreshed workspace state", async ({ page }) => {
   const daemon = new FakeDaemon();
   await daemon.install(page);
