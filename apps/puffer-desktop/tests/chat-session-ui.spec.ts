@@ -918,6 +918,87 @@ test("legacy Codex session resolves to OpenAI daemon provider for models and tur
   });
 });
 
+test("Codex provider summary loads OpenAI models in the picker", async ({ page }) => {
+  const daemon = new FakeDaemon({
+    auth: [
+      {
+        providerId: "codex",
+        kind: "oauth",
+        email: "tester@example.com",
+        expiresAtMs: null,
+        scopes: [],
+        planType: "test",
+        organizationName: null
+      }
+    ],
+    providers: [
+      {
+        id: "codex",
+        displayName: "Codex",
+        baseUrl: "",
+        defaultApi: "openai-responses",
+        modelCount: 1,
+        authModes: ["oauth"],
+        sourceKind: "test",
+        sourcePath: null
+      }
+    ],
+    sessions: [
+      {
+        sessionId: "session-codex-summary-models",
+        displayName: "Codex summary models",
+        title: "Codex summary models",
+        cwd: "/tmp/puffer",
+        folderPath: "/tmp/puffer",
+        updatedAtMs: baseTime,
+        createdAtMs: baseTime - 60_000,
+        eventCount: 0,
+        providerId: "codex",
+        modelId: "gpt-5",
+        timeline: []
+      }
+    ],
+    providerModels: {
+      codex: [],
+      openai: [
+        {
+          id: "gpt-5",
+          displayName: "GPT-5",
+          provider: "openai",
+          api: "openai-responses",
+          contextWindow: 128000,
+          maxOutputTokens: 4096,
+          supportsReasoning: true,
+          thinkingOptions: [
+            {
+              id: "default",
+              label: "Default",
+              description: "Use default reasoning effort.",
+              isDefault: true
+            }
+          ],
+          defaultThinkingOptionId: "default",
+          isDefault: true
+        }
+      ]
+    }
+  });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openSession(page, /Codex summary models/);
+  await page.locator(".pf-composer .trigger").click();
+
+  const picker = page.locator(".pf-composer .menu");
+  await expect(picker.getByRole("option", { name: /GPT-5/ })).toBeVisible();
+
+  const listRequest = await daemon.waitForRequest(
+    "list_provider_models",
+    (request) => request.params.providerId === "openai"
+  );
+  expect(listRequest.params).toMatchObject({ providerId: "openai" });
+});
+
 test("model picker ignores stale provider selection responses", async ({ page }) => {
   const daemon = new FakeDaemon({
     auth: [

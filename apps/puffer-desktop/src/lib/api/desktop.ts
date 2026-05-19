@@ -1713,9 +1713,10 @@ export async function testMcpServer(id: string): Promise<void> {
 
 export async function listProviderModels(providerId: string): Promise<ModelDescriptorInfo[]> {
   const client = await ensureLocalDaemonClient();
+  const daemonProviderId = canonicalDaemonProviderId(providerId);
   const result = await client.request<{ providerId: string; models: ModelDescriptorInfo[] }>(
     "list_provider_models",
-    { providerId }
+    { providerId: daemonProviderId }
   );
   return result.models;
 }
