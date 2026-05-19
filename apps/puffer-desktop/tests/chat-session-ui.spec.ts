@@ -1758,6 +1758,30 @@ test("session title edit saves through the daemon", async ({ page }) => {
   await expect(page.getByRole("button", { name: /Renamed mission/ }).first()).toBeVisible();
 });
 
+test("session title edit focuses the title input", async ({ page }) => {
+  const daemon = new FakeDaemon({
+    sessions: [
+      {
+        sessionId: "session-title-focus",
+        displayName: "Title focus",
+        title: "Title focus",
+        cwd: "/tmp/puffer",
+        folderPath: "/tmp/puffer",
+        updatedAtMs: baseTime,
+        createdAtMs: baseTime - 60_000,
+        eventCount: 0,
+        timeline: []
+      }
+    ]
+  });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openSession(page, /Title focus/);
+  await page.getByRole("button", { name: "Edit session title" }).click();
+  await expect(page.getByLabel("Session title")).toBeFocused();
+});
+
 test("late session title rename response does not replace newly selected session", async ({
   page
 }) => {

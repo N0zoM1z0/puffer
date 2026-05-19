@@ -103,6 +103,7 @@
       : inferStatusFromSession(sessionDetail)
   );
   let editingTitle = $state(false);
+  let titleInputEl = $state<HTMLInputElement | undefined>(undefined);
   let titleDraft = $state("");
   let titleSaving = $state(false);
 
@@ -138,6 +139,10 @@
     if (!session || !onRenameTitle) return;
     titleDraft = displayName;
     editingTitle = true;
+    void tick().then(() => {
+      titleInputEl?.focus();
+      titleInputEl?.select();
+    });
   }
 
   function cancelTitleEdit() {
@@ -415,6 +420,7 @@
         {#if editingTitle}
           <input
             class="title-input"
+            bind:this={titleInputEl}
             bind:value={titleDraft}
             onkeydown={handleTitleKeydown}
             disabled={titleSaving}
