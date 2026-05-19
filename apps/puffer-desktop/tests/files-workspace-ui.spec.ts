@@ -555,6 +555,29 @@ test("connect project directory picker ignores stale path responses", async ({ p
   await expect(picker.getByRole("button", { name: "src" })).toHaveCount(0);
 });
 
+test("connect project directory picker locks while session creation is pending", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  daemon.delayResponse("create_session", () => true, 3_000);
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: "Connect project" }).click();
+  const dialog = page.getByRole("dialog", { name: "Connect project" });
+  await dialog.getByLabel("Directory").fill("/tmp/puffer");
+  await dialog.getByRole("button", { name: "Browse…" }).click();
+  const picker = dialog.getByLabel("Choose directory");
+  await expect(picker).toBeVisible();
+  await expect(picker.getByRole("button", { name: "src" })).toBeVisible();
+
+  await dialog.getByRole("button", { name: "Start agent" }).click();
+  await daemon.waitForRequest("create_session");
+
+  await expect(picker.getByRole("button", { name: "Close directory picker" })).toBeDisabled({ timeout: 250 });
+  await expect(picker.getByRole("button", { name: "Go" })).toBeDisabled({ timeout: 250 });
+  await expect(picker.getByRole("button", { name: "Use this directory" })).toBeDisabled({ timeout: 250 });
+  await expect(picker.getByRole("button", { name: "src" })).toBeDisabled({ timeout: 250 });
+});
+
 test("failed remote project creation restores the previous daemon", async ({ page }) => {
   const localDaemon = new FakeDaemon();
   localDaemon.failNext("create_session", "remote create failed");

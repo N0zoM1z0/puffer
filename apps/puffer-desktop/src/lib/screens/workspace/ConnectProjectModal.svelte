@@ -137,6 +137,7 @@
     if (mode === "local") return localDest.trim().length > 0;
     return sshTarget.trim().length > 0 && remoteDest.trim().length > 0;
   });
+  let pickerBusy = $derived(busy || pickerLoading);
 
   $effect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -553,7 +554,7 @@
               class="pf-modal-close"
               onclick={() => (pickerOpen = false)}
               aria-label="Close directory picker"
-              disabled={pickerLoading}
+              disabled={pickerBusy}
             >
               <Icon name="x" size={13} />
             </button>
@@ -565,9 +566,9 @@
                 bind:value={pickerPath}
                 placeholder="/Users/me/src"
                 spellcheck="false"
-                disabled={pickerLoading}
+                disabled={pickerBusy}
                 onkeydown={(e) => {
-                  if (e.key === "Enter") void loadPickerPath(pickerPath);
+                  if (!pickerBusy && e.key === "Enter") void loadPickerPath(pickerPath);
                 }}
               />
             </div>
@@ -576,7 +577,7 @@
               class="sc-btn"
               data-variant="outline"
               data-size="sm"
-              disabled={pickerLoading}
+              disabled={pickerBusy}
               onclick={() => loadPickerPath(pickerPath)}
             >Go</button>
           </div>
@@ -586,7 +587,7 @@
               class="sc-btn"
               data-variant="ghost"
               data-size="sm"
-              disabled={pickerLoading || pickerPath === "/"}
+              disabled={pickerBusy || pickerPath === "/"}
               onclick={() => loadPickerPath(parentPath(pickerPath))}
             >
               <Icon name="chevL" size={12} />Parent
@@ -596,7 +597,7 @@
               class="sc-btn"
               data-variant="default"
               data-size="sm"
-              disabled={pickerLoading || !pickerPath.trim() || !!pickerError}
+              disabled={pickerBusy || !pickerPath.trim() || !!pickerError}
               onclick={() => {
                 localDest = pickerPath.trim();
                 pickerOpen = false;
@@ -618,6 +619,7 @@
                   <button
                     type="button"
                     class="pf-dir-picker-row"
+                    disabled={pickerBusy}
                     onclick={() => loadPickerPath(`${pickerPath.replace(/\/+$/, "")}/${entry.name}`)}
                   >
                     <Icon name="folder" size={12} />
