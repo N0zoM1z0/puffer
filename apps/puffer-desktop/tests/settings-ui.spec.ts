@@ -465,6 +465,41 @@ test("MCP settings manage existing workspace servers", async ({ page }) => {
   await expect(page.locator(".pf-mcp-card .title").filter({ hasText: "GitHub MCP" })).toHaveCount(0);
 });
 
+test("MCP settings ignore stale test results after removing the server", async ({ page }) => {
+  const daemon = new FakeDaemon({
+    mcpServers: [
+      {
+        id: "github",
+        displayName: "GitHub",
+        description: "GitHub issue tools",
+        transport: "stdio",
+        endpoint: "",
+        target: "npx @modelcontextprotocol/server-github",
+        sourceKind: "local",
+        sourcePath: "/tmp/puffer/.puffer/resources/mcp_servers/github.yaml"
+      }
+    ]
+  });
+  daemon.delayResponse("test_mcp_server", () => true, 220);
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "MCP Servers" }).click();
+
+  const githubCard = page.locator(".pf-mcp-card").filter({ hasText: "GitHub" });
+  await githubCard.getByRole("button", { name: "Test" }).click();
+  await daemon.waitForRequest("test_mcp_server");
+  await githubCard.getByRole("button", { name: "Remove" }).click();
+  await daemon.waitForRequest("remove_mcp_server");
+
+  await expect(page.getByText("Removed github")).toBeVisible();
+  await expect(page.locator(".pf-mcp-card .title").filter({ hasText: "GitHub" })).toHaveCount(0);
+  await page.waitForTimeout(260);
+  await expect(page.getByText("Validated github")).toHaveCount(0);
+  await expect(page.getByText("Removed github")).toBeVisible();
+});
+
 test("MCP settings ignore stale server loads after workspace refresh", async ({ page }) => {
   const daemon = new FakeDaemon();
   daemon.delayResponse("list_mcp_servers", () => true, 260);

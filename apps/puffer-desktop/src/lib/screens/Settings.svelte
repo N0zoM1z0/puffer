@@ -89,6 +89,7 @@
   let mcpLoaded = $state(false);
   let mcpLoading = $state(false);
   let mcpLoadGeneration = 0;
+  let mcpMutationGeneration = 0;
   let mcpSaving = $state(false);
   let mcpRemovingId = $state<string | null>(null);
   let mcpTestingId = $state<string | null>(null);
@@ -144,6 +145,7 @@
     try {
       const servers = await listMcpServers();
       if (generation !== mcpLoadGeneration) return;
+      mcpMutationGeneration += 1;
       mcpServers = servers;
     } catch (e) {
       if (generation === mcpLoadGeneration) {
@@ -222,6 +224,7 @@
       mcpServers = mcpEditingId
         ? await updateMcpServer({ ...payload, originalId: mcpEditingId })
         : await addMcpServer({ ...payload, scope: mcpForm.scope });
+      mcpMutationGeneration += 1;
       mcpLoaded = true;
       mcpSaved = mcpEditingId ? `Updated ${id}` : `Added ${id}`;
       mcpEditingId = null;
@@ -249,6 +252,7 @@
     mcpSaved = null;
     try {
       mcpServers = await removeMcpServer(server.id);
+      mcpMutationGeneration += 1;
       if (mcpEditingId === server.id) cancelMcpEdit();
       mcpSaved = `Removed ${server.id}`;
       props.onRefresh();
@@ -261,16 +265,19 @@
 
   async function testMcpServerFromSettings(server: McpServerInfo) {
     if (mcpTestingId) return;
+    const generation = mcpMutationGeneration;
     mcpTestingId = server.id;
     mcpError = null;
     mcpSaved = null;
     try {
       await testMcpServer(server.id);
+      if (generation !== mcpMutationGeneration || !mcpServers.some((item) => item.id === server.id)) return;
       mcpSaved = `Validated ${server.id}`;
     } catch (e) {
+      if (generation !== mcpMutationGeneration || !mcpServers.some((item) => item.id === server.id)) return;
       mcpError = (e as Error).message ?? String(e);
     } finally {
-      mcpTestingId = null;
+      if (mcpTestingId === server.id) mcpTestingId = null;
     }
   }
 
@@ -454,6 +461,7 @@
     mcpLoaded = false;
     mcpLoading = false;
     mcpLoadGeneration += 1;
+    mcpMutationGeneration += 1;
     mcpError = null;
     mcpSaved = null;
 
