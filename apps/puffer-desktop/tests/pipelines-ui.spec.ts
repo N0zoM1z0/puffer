@@ -48,3 +48,22 @@ test("local workflow draft survives failed refresh", async ({ page }) => {
   ).toBe(workflowRequests + 1);
   await expect(page.locator(".pf-editor-config").getByLabel("Name")).toHaveValue("Refresh-safe draft");
 });
+
+test("provider switch preserves customized agent fields", async ({ page }) => {
+  const daemon = new FakeDaemon({ workspaceRoot: "/tmp/puffer-workspace" });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: "Pipelines" }).click();
+  await daemon.waitForRequest("workflow_list");
+
+  const inspector = page.locator(".pf-editor-inspector");
+  await inspector.getByLabel("Agent name").fill("Custom implementer");
+  await inspector.getByLabel("Model").fill("custom-model");
+  await inspector.getByLabel("Tools").fill("custom-tool, bash");
+  await inspector.getByRole("button", { name: "Claude Code" }).click();
+
+  await expect(inspector.getByLabel("Agent name")).toHaveValue("Custom implementer");
+  await expect(inspector.getByLabel("Model")).toHaveValue("custom-model");
+  await expect(inspector.getByLabel("Tools")).toHaveValue("custom-tool, bash");
+});

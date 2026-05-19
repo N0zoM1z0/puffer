@@ -425,14 +425,23 @@
   }
 
   function changeProvider(id: string, provider: AgentProvider) {
+    const current = workflow?.pipeline.nodes.find((node) => node.id === id);
+    if (!current) return;
+    const previousMeta = providerMeta(current.type);
     const meta = providerMeta(provider);
+    const currentTools = current.tools ?? [];
+    const previousDefaultTools = defaultTools(current.type);
     updateNode(id, {
       type: provider,
-      agent: meta.defaultAgent,
-      model: meta.defaultModel,
-      tools: defaultTools(provider),
-      prompt: selectedNode?.prompt || defaultPrompt(provider)
+      agent: !current.agent || current.agent === previousMeta.defaultAgent ? meta.defaultAgent : current.agent,
+      model: !current.model || current.model === previousMeta.defaultModel ? meta.defaultModel : current.model,
+      tools: sameList(currentTools, previousDefaultTools) ? defaultTools(provider) : currentTools,
+      prompt: current.prompt || defaultPrompt(provider)
     });
+  }
+
+  function sameList(left: string[], right: string[]): boolean {
+    return left.length === right.length && left.every((value, index) => value === right[index]);
   }
 
   function addAgent(provider: AgentProvider) {
