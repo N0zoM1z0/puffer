@@ -901,6 +901,27 @@ test("composer controls handle provider-prefixed session model ids", async ({ pa
   });
 });
 
+test("composer Enter does not submit while IME composition is active", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openSession(page, /^Browser regression\b/);
+  const composer = page.locator(".pf-composer textarea");
+  await composer.fill("正在输入");
+  await composer.dispatchEvent("keydown", {
+    key: "Enter",
+    code: "Enter",
+    bubbles: true,
+    cancelable: true,
+    isComposing: true
+  });
+
+  await page.waitForTimeout(80);
+  expect(daemon.requests.filter((request) => request.method === "run_agent_turn")).toHaveLength(0);
+  await expect(composer).toHaveValue("正在输入");
+});
+
 test("legacy Codex session resolves to OpenAI daemon provider for models and turns", async ({ page }) => {
   const daemon = new FakeDaemon({
     auth: [
