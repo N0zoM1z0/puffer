@@ -456,6 +456,16 @@
   $effect(() => {
     if (!selectedProviderId || thinkingProviderId !== selectedProviderId || thinkingModels.length === 0) return;
     if (selectedModelId && thinkingModels.some((model) => model.id === selectedModelId)) return;
+    // Only override when the selected model is the system default from a different provider
+    // (cross-provider mismatch). Keep custom/fine-tuned models that aren't in the advertised list.
+    const defaultModel = settingsSnapshot?.config.defaultModel ?? null;
+    const defaultProvider = settingsSnapshot?.config.defaultProvider ?? null;
+    const isDefaultFromOtherProvider =
+      defaultModel &&
+      defaultProvider &&
+      selectedModelId === normalizeModelIdForProvider(selectedProviderId, defaultModel) &&
+      !providerIdsEquivalent(selectedProviderId, defaultProvider);
+    if (!isDefaultFromOtherProvider) return;
     const fallback = thinkingModels.find((model) => model.isDefault) ?? thinkingModels[0];
     selectedModelId = fallback.id;
     selectedThinkingOptionId = "";
