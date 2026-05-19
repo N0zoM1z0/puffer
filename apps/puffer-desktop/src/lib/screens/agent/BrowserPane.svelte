@@ -337,13 +337,8 @@
   }
 
   function faviconFor(url: string): string {
-    try {
-      const parsed = new URL(url);
-      if (!["http:", "https:"].includes(parsed.protocol)) return "";
-      return `${parsed.origin}/favicon.ico`;
-    } catch {
-      return "";
-    }
+    void url;
+    return "";
   }
 
   function activeBackendSessionId(): string {

@@ -118,6 +118,25 @@ test("Browser address Enter does not submit a page-level form", async ({ page })
   await expect(page.getByLabel("URL")).toHaveValue("https://example.com");
 });
 
+test("Browser tabs do not load external favicons into the desktop WebView", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openRegressionAgent(page);
+  await openAgentPanel(page, "Browser");
+  await daemon.waitForRequest("browser_open");
+
+  daemon.emit("browser:session-browser:browser:tab-1:state", {
+    url: "https://www.google.com/",
+    title: "Google",
+    loading: false
+  });
+
+  await expect(page.locator(".pf-browser-tab .label")).toContainText("Google");
+  await expect(page.locator(".pf-browser-tab img.favicon")).toHaveCount(0);
+});
+
 test("renders Browser devtools events from the daemon stream", async ({ page }) => {
   const daemon = new FakeDaemon();
   await daemon.install(page);
