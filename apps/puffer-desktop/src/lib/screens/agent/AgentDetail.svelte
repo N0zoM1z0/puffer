@@ -104,6 +104,7 @@
       : inferStatusFromSession(sessionDetail)
   );
   let editingTitle = $state(false);
+  let titleEditSessionId = $state<string | null>(null);
   let titleInputEl = $state<HTMLInputElement | undefined>(undefined);
   let titleDraft = $state("");
   let titleSaving = $state(false);
@@ -113,7 +114,16 @@
   });
 
   $effect(() => {
-    const sessionId = session?.id ?? null;
+    const sessionId = sessionDetail?.session.id ?? session?.id ?? null;
+    if (!editingTitle || titleEditSessionId === null || titleEditSessionId === sessionId) return;
+    editingTitle = false;
+    titleEditSessionId = null;
+    titleSaving = false;
+    titleDraft = displayName;
+  });
+
+  $effect(() => {
+    const sessionId = sessionDetail?.session.id ?? session?.id ?? null;
     const activeTab = tab;
     const activeSideTab = sideTab;
     const visibleTimeline = timeline;
@@ -156,6 +166,7 @@
   function startTitleEdit() {
     if (!session || !onRenameTitle) return;
     titleDraft = displayName;
+    titleEditSessionId = session.id;
     editingTitle = true;
     void tick().then(() => {
       titleInputEl?.focus();
@@ -165,6 +176,7 @@
 
   function cancelTitleEdit() {
     titleDraft = displayName;
+    titleEditSessionId = null;
     editingTitle = false;
   }
 
@@ -174,6 +186,7 @@
     try {
       await onRenameTitle(titleDraft);
       editingTitle = false;
+      titleEditSessionId = null;
     } finally {
       titleSaving = false;
     }

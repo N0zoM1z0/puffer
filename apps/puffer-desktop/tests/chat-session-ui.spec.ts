@@ -1782,6 +1782,60 @@ test("session title edit focuses the title input", async ({ page }) => {
   await expect(page.getByLabel("Session title")).toBeFocused();
 });
 
+test("session title edit is cancelled when switching sessions", async ({ page }) => {
+  const daemon = new FakeDaemon({
+    sessions: [
+      {
+        sessionId: "session-title-alpha-switch",
+        displayName: "Title alpha switch",
+        title: "Title alpha switch",
+        cwd: "/tmp/puffer",
+        folderPath: "/tmp/puffer",
+        updatedAtMs: baseTime,
+        createdAtMs: baseTime - 60_000,
+        eventCount: 1,
+        timeline: [
+          {
+            kind: "assistant_message",
+            id: "alpha-switch-seed",
+            text: "Alpha title seed",
+            createdAtMs: baseTime - 30_000
+          }
+        ]
+      },
+      {
+        sessionId: "session-title-beta-switch",
+        displayName: "Title beta switch",
+        title: "Title beta switch",
+        cwd: "/tmp/puffer",
+        folderPath: "/tmp/puffer",
+        updatedAtMs: baseTime - 1_000,
+        createdAtMs: baseTime - 120_000,
+        eventCount: 1,
+        timeline: [
+          {
+            kind: "assistant_message",
+            id: "beta-switch-seed",
+            text: "Beta title seed",
+            createdAtMs: baseTime - 90_000
+          }
+        ]
+      }
+    ]
+  });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openSession(page, /Title alpha switch/);
+  await page.getByRole("button", { name: "Edit session title" }).click();
+  await page.getByLabel("Session title").fill("Alpha draft should not leak");
+
+  await openSession(page, /Title beta switch/);
+  await expect(page.getByText("Beta title seed")).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Session title" })).toHaveCount(0);
+  await expect(page.locator(".pf-agent-identity .primary-title")).toContainText("Title beta switch");
+});
+
 test("late session title rename response does not replace newly selected session", async ({
   page
 }) => {
