@@ -246,12 +246,12 @@
     seenSeqByPty.delete(ptyId);
     void closePty(ptyId).catch(() => {});
     if (activePtyId !== ptyId) return;
+    cleanupTerminalAttach(true);
     const next = nextTabs[Math.min(closingIndex, nextTabs.length - 1)] ?? nextTabs[nextTabs.length - 1];
     if (next) {
       await activatePty(next.ptyId);
     } else {
       activePtyId = null;
-      cleanupTerminalAttach(true);
     }
   }
 

@@ -116,6 +116,37 @@ test("Terminal stops accepting input immediately after closing the active PTY", 
   expect(daemon.requests.filter((request) => request.method === "pty_write")).toHaveLength(0);
 });
 
+test("Terminal detaches old input while switching after active close", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: /Browser regression/ }).first().click();
+  await page.locator(".pf-agent-tabs").getByRole("button", { name: "Terminal", exact: true }).click();
+  await daemon.waitForRequest("pty_open", (request) => request.params.sessionId === "session-browser");
+  await daemon.waitForRequest("pty_replay", (request) => request.params.ptyId === "pty-1");
+
+  await page.getByRole("button", { name: "New terminal" }).click();
+  await daemon.waitForRequest("pty_open", (request) => request.params.sessionId === "session-browser");
+  await daemon.waitForRequest("pty_replay", (request) => request.params.ptyId === "pty-2");
+
+  await page.getByRole("tab", { name: /Terminal 1/ }).click();
+  await daemon.waitForRequest("pty_focus", (request) => request.params.ptyId === "pty-1");
+  await expect(page.getByRole("tab", { name: /Terminal 1/ })).toHaveAttribute("aria-selected", "true");
+
+  daemon.delayResponse("pty_focus", (request) => request.params.ptyId === "pty-2", 180);
+  await page.getByRole("button", { name: "Close Terminal 1" }).click();
+  await daemon.waitForRequest("pty_close", (request) => request.params.ptyId === "pty-1");
+  await daemon.waitForRequest("pty_focus", (request) => request.params.ptyId === "pty-2");
+  await page.locator(".pf-terminal-host").click();
+  await page.keyboard.type("x");
+
+  const staleWrites = daemon.requests.filter(
+    (request) => request.method === "pty_write" && request.params.ptyId === "pty-1"
+  );
+  expect(staleWrites).toHaveLength(0);
+});
+
 test("Terminal ignores late attach work after closing the active PTY", async ({ page }) => {
   const daemon = new FakeDaemon();
   daemon.delayResponse("pty_replay", (request) => request.params.ptyId === "pty-1", 180);
