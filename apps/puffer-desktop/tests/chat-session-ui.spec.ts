@@ -1025,6 +1025,49 @@ test("stop turn requests cancellation for the active turn", async ({ page }) => 
   });
 });
 
+test("stop turn submits only one cancellation while pending", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  daemon.delayResponse("cancel_turn", () => true, 180);
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openSession(page, /^Browser regression\b/);
+  await page.locator(".pf-composer textarea").fill("Cancel this turn once");
+  await page.getByRole("button", { name: "Send" }).click();
+
+  await daemon.waitForRequest(
+    "run_agent_turn",
+    (request) => request.params.message === "Cancel this turn once"
+  );
+  const stop = page.getByRole("button", { name: "Stop turn" });
+  await expect(stop).toBeVisible();
+  await stop.dblclick();
+  await expect(stop).toBeDisabled();
+  await page.waitForTimeout(60);
+  expect(daemon.requests.filter((request) => request.method === "cancel_turn")).toHaveLength(1);
+});
+
+test("failed stop turn requests surface a retryable error", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  daemon.failNext("cancel_turn", "cancel channel closed");
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openSession(page, /^Browser regression\b/);
+  await page.locator(".pf-composer textarea").fill("Cancel failure");
+  await page.getByRole("button", { name: "Send" }).click();
+  await daemon.waitForRequest(
+    "run_agent_turn",
+    (request) => request.params.message === "Cancel failure"
+  );
+
+  await page.getByRole("button", { name: "Stop turn" }).click();
+  await daemon.waitForRequest("cancel_turn");
+  await expect(page.getByText("Stop request failed")).toBeVisible();
+  await expect(page.getByText(/cancel channel closed/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Stop turn" })).toBeEnabled();
+});
+
 test("session title edit saves through the daemon", async ({ page }) => {
   const daemon = new FakeDaemon({
     sessions: [

@@ -30,6 +30,7 @@
     pendingQuestions: UserQuestionTimelineItem[];
     loading: boolean;
     turnRunning?: boolean;
+    cancelTurnInFlight?: boolean;
     turnStartedAtMs?: number | null;
     turnThinking?: boolean;
     turnStatusHint?: string | null;
@@ -56,6 +57,7 @@
     pendingQuestions,
     loading,
     turnRunning = false,
+    cancelTurnInFlight = false,
     turnStartedAtMs = null,
     turnThinking = false,
     turnStatusHint = null,
@@ -520,6 +522,7 @@
         {pufferState}
         {projectCwd}
         {turnRunning}
+        {cancelTurnInFlight}
         {turnStartedAtMs}
         {turnThinking}
         {turnStatusHint}
@@ -568,6 +571,7 @@
           {pufferState}
           {projectCwd}
           {turnRunning}
+          {cancelTurnInFlight}
           {turnStartedAtMs}
           {turnThinking}
           {turnStatusHint}

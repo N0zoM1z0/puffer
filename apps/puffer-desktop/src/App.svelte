@@ -44,7 +44,7 @@
     runAgentTurn,
     resolvePermission as resolveTurnPermission,
     resolveUserQuestion as resolveTurnUserQuestion,
-    cancelTurn,
+    cancelTurn as cancelTurnRequest,
     createSession,
     loadDefaultWorkspace,
     loadDesktopPins,
@@ -130,6 +130,7 @@
   // running. When the turn finishes we reload the session detail so the real
   // persisted transcript replaces these placeholders.
   let currentTurnId = $state<string | null>(null);
+  let cancelTurnInFlight = $state(false);
   let turnStartedAtMs = $state<number | null>(null);
   let turnThinking = $state(false);
   let turnStatusHint = $state<string | null>(null);
@@ -809,6 +810,7 @@
         turnPermissionLookup = {};
         turnQuestionLookup = {};
         currentTurnId = null;
+        cancelTurnInFlight = false;
         turnStartedAtMs = null;
         turnThinking = false;
         turnStatusHint = null;
@@ -1004,7 +1006,7 @@
   // Phase 2+: these aren't surfaced yet in the new UI, but we keep the handlers
   // live so PR / repo actions continue to work through whatever embeds them.
   // Referenced via the noop below so TS/svelte-check don't treat them as dead.
-  const _keepAlive = { createPullRequest, mergePullRequest, refreshRepoStatus, cancelTurn };
+  const _keepAlive = { createPullRequest, mergePullRequest, refreshRepoStatus, cancelTurnRequest };
   void _keepAlive;
 
   function updateTweak<K extends keyof Tweaks>(key: K, value: Tweaks[K]) {
@@ -1097,6 +1099,7 @@
         return true;
       }
       currentTurnId = turnId;
+      cancelTurnInFlight = false;
       settledTurnIds.delete(turnId);
       submittedMessages = [
         ...submittedMessages,
@@ -1192,6 +1195,24 @@
     } else {
       dismissedQuestionIds = [...dismissedQuestionIds, questionId];
       statusMessage = "Answer selected (no in-flight turn).";
+    }
+  }
+
+  async function cancelCurrentTurn() {
+    if (!currentTurnId || cancelTurnInFlight) return;
+    const turnId = currentTurnId;
+    cancelTurnInFlight = true;
+    try {
+      await cancelTurnRequest(turnId);
+      statusMessage = "Stop request sent to agent.";
+    } catch (error) {
+      const detail = errorText(error);
+      statusMessage = `cancel_turn failed: ${detail}`;
+      appendAgentError("Stop request failed", detail, "cancel-turn-error");
+    } finally {
+      if (currentTurnId === turnId || currentTurnId === null) {
+        cancelTurnInFlight = false;
+      }
     }
   }
 
@@ -1340,6 +1361,7 @@
 
   function markTurnActive(turnId: string) {
     currentTurnId = turnId;
+    cancelTurnInFlight = false;
     settledTurnIds.delete(turnId);
   }
 
@@ -1347,6 +1369,7 @@
     settledTurnIds.add(turnId);
     if (currentTurnId === turnId) {
       currentTurnId = null;
+      cancelTurnInFlight = false;
     }
   }
 
@@ -1645,6 +1668,7 @@
                 pendingQuestions={pendingQuestions}
                 loading={sessionLoading}
                 turnRunning={turnRunning}
+                cancelTurnInFlight={cancelTurnInFlight}
                 turnStartedAtMs={turnStartedAtMs}
                 turnThinking={turnThinking}
                 turnStatusHint={turnStatusHint}
@@ -1654,7 +1678,7 @@
                 onSubmitMessage={submitMessage}
                 onResolvePermission={resolvePermission}
                 onResolveUserQuestion={resolveUserQuestion}
-                onCancelTurn={() => { if (currentTurnId) void cancelTurn(currentTurnId); }}
+                onCancelTurn={() => void cancelCurrentTurn()}
                 onDraftChange={(hasDraft) => (composerHasDraft = hasDraft)}
                 onRenameTitle={renameSelectedSession}
               />

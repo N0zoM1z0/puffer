@@ -47,6 +47,7 @@
      *  the composer's send button into a red "Stop" so the user can
      *  interrupt a runaway loop. */
     turnRunning?: boolean;
+    cancelTurnInFlight?: boolean;
     turnStartedAtMs?: number | null;
     turnThinking?: boolean;
     turnStatusHint?: string | null;
@@ -72,6 +73,7 @@
     pendingQuestions,
     loading,
     turnRunning = false,
+    cancelTurnInFlight = false,
     turnStartedAtMs = null,
     turnThinking = false,
     turnStatusHint = null,
@@ -1355,8 +1357,13 @@
             onclick={onCancelTurn}
             aria-label="Stop turn"
             title="Stop the running agent turn"
+            disabled={cancelTurnInFlight}
           >
-            <Icon name="pause2" size={14} />
+            {#if cancelTurnInFlight}
+              <span class="pf-send-spinner" aria-hidden="true"></span>
+            {:else}
+              <Icon name="pause2" size={14} />
+            {/if}
           </button>
         {:else}
           <button type="button" class="pf-send-btn" disabled={!canSubmitPrompt} onclick={submit} aria-label="Send">
@@ -1460,6 +1467,17 @@
     color: var(--muted-foreground);
     font-family: var(--font-sans);
     font-size: var(--pf-chat-meta-size);
+  }
+  .pf-send-spinner {
+    width: 13px;
+    height: 13px;
+    border: 2px solid color-mix(in oklab, var(--puffer-accent-fg) 35%, transparent);
+    border-top-color: var(--puffer-accent-fg);
+    border-radius: 50%;
+    animation: pf-spin 0.7s linear infinite;
+  }
+  @keyframes pf-spin {
+    to { transform: rotate(360deg); }
   }
   .you-badge {
     border: 1px solid var(--border);
