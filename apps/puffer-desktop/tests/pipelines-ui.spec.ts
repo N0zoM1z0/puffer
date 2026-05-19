@@ -105,3 +105,43 @@ test("wiring prevents dependencies that would create cycles", async ({ page }) =
   await expect(pufferDependency).toBeDisabled();
   await expect(pufferDependency).not.toBeChecked();
 });
+
+test("required pipeline and agent fields show validation when cleared", async ({ page }) => {
+  const daemon = new FakeDaemon({ workspaceRoot: "/tmp/puffer-workspace" });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: "Pipelines" }).click();
+  await daemon.waitForRequest("workflow_list");
+
+  const config = page.locator(".pf-editor-config");
+  await config.getByLabel("Name").fill("");
+  await config.getByLabel("Slug").fill("");
+  await config.getByLabel("Working directory").fill("");
+  await config.getByLabel("Source topic").fill("");
+  await config.getByLabel("Pattern").fill("");
+
+  await expect(config.getByText("Pipeline name is required.")).toBeVisible();
+  await expect(config.getByText("Pipeline slug is required.")).toBeVisible();
+  await expect(config.getByText("Working directory is required.")).toBeVisible();
+  await expect(config.getByText("Source topic is required.")).toBeVisible();
+  await expect(config.getByText("Pattern is required.")).toBeVisible();
+
+  const inspector = page.locator(".pf-editor-inspector");
+  await inspector.getByLabel("Agent name").fill("");
+  await inspector.getByLabel("Model").fill("");
+  await inspector.getByLabel("Tools").fill("");
+  await inspector.getByLabel("Prompt").fill("");
+
+  await expect(inspector.getByText("Agent name is required.")).toBeVisible();
+  await expect(inspector.getByText("Model is required.")).toBeVisible();
+  await expect(inspector.getByText("At least one tool is required.")).toBeVisible();
+  await expect(inspector.getByText("Prompt is required.")).toBeVisible();
+
+  const triggerType = config.getByRole("group", { name: "Trigger type" });
+  await triggerType.getByRole("button", { name: "Cron" }).click();
+  const cronInput = config.locator('label:has-text("Cron") input');
+  await cronInput.fill("");
+
+  await expect(config.getByText("Cron is required.")).toBeVisible();
+});

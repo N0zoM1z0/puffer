@@ -403,20 +403,19 @@
 
   function updateWorkflowField(field: "slug" | "enabled" | "name" | "working_dir" | "concurrency", value: string | boolean | number | null) {
     if (!workflow) return;
-    const oldSlug = workflow.slug;
     updateCurrentWorkflow((item) => {
-      if (field === "slug") return { ...item, slug: String(value || "pipeline") };
+      if (field === "slug") return { ...item, slug: String(value ?? "") };
       if (field === "enabled") return { ...item, enabled: Boolean(value) };
       if (field === "name") return { ...item, pipeline: { ...item.pipeline, name: String(value) } };
       if (field === "working_dir") return { ...item, pipeline: { ...item.pipeline, working_dir: String(value) } };
       return { ...item, pipeline: { ...item.pipeline, concurrency: Number(value) || 1 } };
     });
-    if (field === "slug") workflowSlug = String(value || oldSlug);
+    if (field === "slug") workflowSlug = String(value ?? "");
   }
 
   function updateTriggerField(field: "source_topic" | "pattern" | "cron", value: string) {
     updateCurrentWorkflow((item) => {
-      if (item.trigger.type === "cron") return { ...item, trigger: { type: "cron", cron: value || "0 * * * *" } };
+      if (item.trigger.type === "cron") return { ...item, trigger: { type: "cron", cron: value } };
       return {
         ...item,
         trigger: {
@@ -613,6 +612,14 @@
   function triggerTitle(item: EditableWorkflow | WorkflowDefinition): string {
     if (item.trigger.type === "cron") return item.trigger.cron;
     return item.trigger.source_topic;
+  }
+
+  function requiredFieldError(label: string, value: string | null | undefined): string | null {
+    return value?.trim() ? null : `${label} is required.`;
+  }
+
+  function toolsFieldError(node: EditablePipelineNode): string | null {
+    return (node.tools ?? []).some((tool) => tool.trim()) ? null : "At least one tool is required.";
   }
 
   function workflowLatestRun(slug: string): WorkflowRun | undefined {
@@ -873,15 +880,36 @@
             </div>
             <label>
               <span>Name</span>
-              <input value={workflow.pipeline.name} oninput={(event) => updateWorkflowField("name", event.currentTarget.value)} />
+              <input
+                value={workflow.pipeline.name}
+                aria-invalid={Boolean(requiredFieldError("Pipeline name", workflow.pipeline.name))}
+                oninput={(event) => updateWorkflowField("name", event.currentTarget.value)}
+              />
+              {#if requiredFieldError("Pipeline name", workflow.pipeline.name)}
+                <small class="pf-editor-field-error">{requiredFieldError("Pipeline name", workflow.pipeline.name)}</small>
+              {/if}
             </label>
             <label>
               <span>Slug</span>
-              <input value={workflow.slug} oninput={(event) => updateWorkflowField("slug", event.currentTarget.value)} />
+              <input
+                value={workflow.slug}
+                aria-invalid={Boolean(requiredFieldError("Pipeline slug", workflow.slug))}
+                oninput={(event) => updateWorkflowField("slug", event.currentTarget.value)}
+              />
+              {#if requiredFieldError("Pipeline slug", workflow.slug)}
+                <small class="pf-editor-field-error">{requiredFieldError("Pipeline slug", workflow.slug)}</small>
+              {/if}
             </label>
             <label>
               <span>Working directory</span>
-              <input value={workflow.pipeline.working_dir ?? ""} oninput={(event) => updateWorkflowField("working_dir", event.currentTarget.value)} />
+              <input
+                value={workflow.pipeline.working_dir ?? ""}
+                aria-invalid={Boolean(requiredFieldError("Working directory", workflow.pipeline.working_dir))}
+                oninput={(event) => updateWorkflowField("working_dir", event.currentTarget.value)}
+              />
+              {#if requiredFieldError("Working directory", workflow.pipeline.working_dir)}
+                <small class="pf-editor-field-error">{requiredFieldError("Working directory", workflow.pipeline.working_dir)}</small>
+              {/if}
             </label>
             <label class="pf-editor-inline">
               <span>Enabled</span>
@@ -909,16 +937,37 @@
             {#if workflow.trigger.type === "cron"}
               <label>
                 <span>Cron</span>
-                <input value={workflow.trigger.cron} oninput={(event) => updateTriggerField("cron", event.currentTarget.value)} />
+                <input
+                  value={workflow.trigger.cron}
+                  aria-invalid={Boolean(requiredFieldError("Cron", workflow.trigger.cron))}
+                  oninput={(event) => updateTriggerField("cron", event.currentTarget.value)}
+                />
+                {#if requiredFieldError("Cron", workflow.trigger.cron)}
+                  <small class="pf-editor-field-error">{requiredFieldError("Cron", workflow.trigger.cron)}</small>
+                {/if}
               </label>
             {:else}
               <label>
                 <span>Source topic</span>
-                <input value={workflow.trigger.source_topic} oninput={(event) => updateTriggerField("source_topic", event.currentTarget.value)} />
+                <input
+                  value={workflow.trigger.source_topic}
+                  aria-invalid={Boolean(requiredFieldError("Source topic", workflow.trigger.source_topic))}
+                  oninput={(event) => updateTriggerField("source_topic", event.currentTarget.value)}
+                />
+                {#if requiredFieldError("Source topic", workflow.trigger.source_topic)}
+                  <small class="pf-editor-field-error">{requiredFieldError("Source topic", workflow.trigger.source_topic)}</small>
+                {/if}
               </label>
               <label>
                 <span>Pattern</span>
-                <input value={workflow.trigger.pattern ?? ""} oninput={(event) => updateTriggerField("pattern", event.currentTarget.value)} />
+                <input
+                  value={workflow.trigger.pattern ?? ""}
+                  aria-invalid={Boolean(requiredFieldError("Pattern", workflow.trigger.pattern))}
+                  oninput={(event) => updateTriggerField("pattern", event.currentTarget.value)}
+                />
+                {#if requiredFieldError("Pattern", workflow.trigger.pattern)}
+                  <small class="pf-editor-field-error">{requiredFieldError("Pattern", workflow.trigger.pattern)}</small>
+                {/if}
               </label>
             {/if}
           </section>
@@ -951,19 +1000,48 @@
               </label>
               <label>
                 <span>Agent name</span>
-                <input value={selectedNode.agent ?? ""} oninput={(event) => updateNode(selectedNode.id, { agent: event.currentTarget.value })} />
+                <input
+                  value={selectedNode.agent ?? ""}
+                  aria-invalid={Boolean(requiredFieldError("Agent name", selectedNode.agent))}
+                  oninput={(event) => updateNode(selectedNode.id, { agent: event.currentTarget.value })}
+                />
+                {#if requiredFieldError("Agent name", selectedNode.agent)}
+                  <small class="pf-editor-field-error">{requiredFieldError("Agent name", selectedNode.agent)}</small>
+                {/if}
               </label>
               <label>
                 <span>Model</span>
-                <input value={selectedNode.model ?? ""} oninput={(event) => updateNode(selectedNode.id, { model: event.currentTarget.value })} />
+                <input
+                  value={selectedNode.model ?? ""}
+                  aria-invalid={Boolean(requiredFieldError("Model", selectedNode.model))}
+                  oninput={(event) => updateNode(selectedNode.id, { model: event.currentTarget.value })}
+                />
+                {#if requiredFieldError("Model", selectedNode.model)}
+                  <small class="pf-editor-field-error">{requiredFieldError("Model", selectedNode.model)}</small>
+                {/if}
               </label>
               <label>
                 <span>Tools</span>
-                <input value={toolsText(selectedNode)} oninput={(event) => setTools(selectedNode.id, event.currentTarget.value)} />
+                <input
+                  value={toolsText(selectedNode)}
+                  aria-invalid={Boolean(toolsFieldError(selectedNode))}
+                  oninput={(event) => setTools(selectedNode.id, event.currentTarget.value)}
+                />
+                {#if toolsFieldError(selectedNode)}
+                  <small class="pf-editor-field-error">{toolsFieldError(selectedNode)}</small>
+                {/if}
               </label>
               <label>
                 <span>Prompt</span>
-                <textarea rows="5" value={selectedNode.prompt} oninput={(event) => updateNode(selectedNode.id, { prompt: event.currentTarget.value })}></textarea>
+                <textarea
+                  rows="5"
+                  value={selectedNode.prompt}
+                  aria-invalid={Boolean(requiredFieldError("Prompt", selectedNode.prompt))}
+                  oninput={(event) => updateNode(selectedNode.id, { prompt: event.currentTarget.value })}
+                ></textarea>
+                {#if requiredFieldError("Prompt", selectedNode.prompt)}
+                  <small class="pf-editor-field-error">{requiredFieldError("Prompt", selectedNode.prompt)}</small>
+                {/if}
               </label>
             {:else}
               <div class="pf-pipe-empty">Select an agent node to edit it.</div>
@@ -1312,6 +1390,18 @@
   .pf-editor-panel textarea:focus {
     border-color: var(--puffer-accent);
     box-shadow: 0 0 0 2px color-mix(in oklab, var(--puffer-accent) 18%, transparent);
+  }
+
+  .pf-editor-panel input[aria-invalid="true"],
+  .pf-editor-panel textarea[aria-invalid="true"] {
+    border-color: color-mix(in oklab, var(--pf-run-failed) 65%, var(--border));
+    box-shadow: 0 0 0 2px color-mix(in oklab, var(--pf-run-failed) 14%, transparent);
+  }
+
+  .pf-editor-field-error {
+    color: var(--pf-run-failed);
+    font-size: 10.5px;
+    line-height: 1.2;
   }
 
   .pf-editor-inline {
