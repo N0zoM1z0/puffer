@@ -1494,13 +1494,14 @@ fn handle_list_provider_models(state: &DaemonState, params: &Value) -> Result<Va
         .or_else(|| params.get("provider_id"))
         .and_then(|v| v.as_str())
         .context("missing providerId")?;
+    let provider_id = canonical_desktop_provider_id(provider_id);
     let inputs = state.build_runtime_inputs()?;
     let entry = inputs
         .providers
         .provider_entries()
         .find(|p| p.descriptor.id == provider_id)
         .with_context(|| format!("unknown provider `{provider_id}`"))?;
-    let family = provider_preference_family(&inputs.providers, provider_id);
+    let family = provider_preference_family(&inputs.providers, &provider_id);
     let models: Vec<ModelDescriptorDto> = entry
         .descriptor
         .models
@@ -1831,6 +1832,7 @@ fn resolve_create_session_routing(
 
     let inputs = state.build_runtime_inputs()?;
     if let Some(provider_id) = provider_id {
+        let provider_id = canonical_desktop_provider_id(&provider_id);
         let provider = inputs
             .providers
             .provider(&provider_id)
@@ -1887,7 +1889,9 @@ fn normalize_provider_model_id(provider_id: &str, model_id: &str) -> Option<Stri
         return None;
     }
     if let Some((prefix, model)) = trimmed.split_once('/') {
-        if prefix == provider_id && !model.trim().is_empty() {
+        if canonical_desktop_provider_id(prefix) == canonical_desktop_provider_id(provider_id)
+            && !model.trim().is_empty()
+        {
             return Some(model.trim().to_string());
         }
         return None;
@@ -2737,7 +2741,8 @@ impl TurnRequestOptions {
     fn from_params(params: &Value) -> Self {
         Self {
             model_override: optional_trimmed_value(params, &["modelOverride", "model_override"]),
-            provider_id: optional_trimmed_value(params, &["providerId", "provider_id"]),
+            provider_id: optional_trimmed_value(params, &["providerId", "provider_id"])
+                .map(|provider_id| canonical_desktop_provider_id(&provider_id)),
             model_id: optional_trimmed_value(params, &["modelId", "model_id"]),
             thinking_option_id: optional_trimmed_value(
                 params,
@@ -2754,6 +2759,14 @@ impl TurnRequestOptions {
                     _ => None,
                 }),
         }
+    }
+}
+
+fn canonical_desktop_provider_id(provider_id: &str) -> String {
+    match provider_id.trim().to_lowercase().as_str() {
+        "codex" => "openai".to_string(),
+        "claude" => "anthropic".to_string(),
+        _ => provider_id.trim().to_string(),
     }
 }
 
@@ -2817,10 +2830,10 @@ fn apply_turn_model_selection(
     fast_mode: bool,
 ) -> Result<()> {
     let requested = if let Some(provider_id) = provider_id {
-        if model_id.starts_with(&format!("{provider_id}/")) {
-            model_id.to_string()
-        } else {
+        if let Some(model_id) = normalize_provider_model_id(provider_id, model_id) {
             format!("{provider_id}/{model_id}")
+        } else {
+            model_id.to_string()
         }
     } else {
         model_id.to_string()
@@ -3378,6 +3391,37 @@ mod tests {
         assert_eq!(options.thinking_option_id.as_deref(), Some("high"));
         assert_eq!(options.fast_mode, Some(true));
         assert_eq!(options.permission_mode.as_deref(), Some("read-only"));
+    }
+
+    #[test]
+    fn turn_request_options_accept_desktop_provider_aliases() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let metadata = SessionMetadata {
+            id: Uuid::new_v4(),
+            display_name: None,
+            generated_title: None,
+            cwd: temp.path().to_path_buf(),
+            created_at_ms: 0,
+            updated_at_ms: 0,
+            parent_session_id: None,
+            slug: None,
+            tags: Vec::new(),
+            note: None,
+        };
+        let mut state = AppState::new(PufferConfig::default(), temp.path().to_path_buf(), metadata);
+
+        let mut providers = ProviderRegistry::new();
+        providers.register(provider("openai", &["gpt-5"]));
+        let options = TurnRequestOptions::from_params(&json!({
+            "providerId": "codex",
+            "modelId": "codex/gpt-5",
+        }));
+
+        apply_turn_request_options(&mut state, &providers, &options).expect("turn options");
+
+        assert_eq!(options.provider_id.as_deref(), Some("openai"));
+        assert_eq!(state.current_provider.as_deref(), Some("openai"));
+        assert_eq!(state.current_model.as_deref(), Some("openai/gpt-5"));
     }
 
     #[test]
