@@ -116,6 +116,7 @@
     activePtyId = ptyId;
     ptyTabs = ptyTabs.map((tab) => ({ ...tab, active: tab.ptyId === ptyId }));
     await focusPty(ptyId).catch(() => {});
+    if (disposed || activePtyId !== ptyId) return;
     await attachTerminal(ptyId);
   }
 
