@@ -88,6 +88,15 @@
   color: var(--muted-foreground);
   flex-shrink: 0;
 }
+.pf-pw-project-title .path {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted-foreground);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .pf-pw-project-counts {
   display: inline-flex; align-items: center; gap: 10px;

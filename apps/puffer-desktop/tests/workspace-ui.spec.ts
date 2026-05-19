@@ -139,6 +139,42 @@ test("workspace board renders daemon session activity states", async ({ page }) 
   await expect(queuedColumn.getByText("Idle docs followup")).toBeVisible();
 });
 
+test("workspace rows disambiguate duplicate project basenames", async ({ page }) => {
+  const daemon = new FakeDaemon({
+    sessions: [
+      {
+        sessionId: "session-left-current",
+        displayName: "Left current",
+        title: "Left current",
+        cwd: "/tmp/team-a/current",
+        folderPath: "/tmp/team-a/current",
+        updatedAtMs: baseTime,
+        createdAtMs: baseTime - 60_000,
+        eventCount: 2
+      },
+      {
+        sessionId: "session-right-current",
+        displayName: "Right current",
+        title: "Right current",
+        cwd: "/tmp/team-b/current",
+        folderPath: "/tmp/team-b/current",
+        updatedAtMs: baseTime - 1_000,
+        createdAtMs: baseTime - 120_000,
+        eventCount: 3
+      }
+    ]
+  });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await expect(page.locator(".pf-pw-project").filter({ hasText: "/tmp/team-a/current" })).toBeVisible();
+  await expect(page.locator(".pf-pw-project").filter({ hasText: "/tmp/team-b/current" })).toBeVisible();
+
+  await page.getByLabel("Search workspace").fill("team-b");
+  await expect(page.locator(".pf-pw-project").filter({ hasText: "/tmp/team-b/current" })).toBeVisible();
+  await expect(page.locator(".pf-pw-project").filter({ hasText: "/tmp/team-a/current" })).toHaveCount(0);
+});
+
 test("project memory edit control is disabled until file editing is wired", async ({ page }) => {
   const daemon = new FakeDaemon();
   await daemon.install(page);

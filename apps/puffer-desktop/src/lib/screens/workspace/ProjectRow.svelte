@@ -31,6 +31,7 @@
       {#if project.branch}
         <span class="branch"><Icon name="branch" size={10} />{project.branch}</span>
       {/if}
+      <span class="path" title={project.path}>{project.path}</span>
     </div>
     <div class="pf-pw-project-counts">
       <span class="count">{agents.length} agents</span>
