@@ -612,7 +612,8 @@
       if (
         disposed ||
         requestedAtGeneration !== sessionGeneration ||
-        activeRootSessionId !== targetSessionId
+        activeRootSessionId !== targetSessionId ||
+        openRequest !== latestTabOpenRequest
       ) return;
       error = String(err);
     }

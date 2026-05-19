@@ -352,6 +352,41 @@ test("late Browser new-tab responses do not resurrect cleared tabs", async ({ pa
   await expect(page.locator(".pf-browser-status")).toHaveText("No pages");
 });
 
+test("late Browser new-tab failure does not mark a newer tab", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  daemon.delayResponse(
+    "browser_agent",
+    (request) => request.params.action === "open" && request.params.tabId === "tab-2",
+    180
+  );
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openRegressionAgent(page);
+  await openAgentPanel(page, "Browser");
+  await daemon.waitForRequest("browser_open", (request) =>
+    request.params.sessionId === "session-browser:browser:tab-1"
+  );
+
+  daemon.failNext("browser_agent", "tab-2 open failed");
+  const newTab = page.getByRole("button", { name: "New tab" });
+  await newTab.click();
+  await daemon.waitForRequest("browser_agent", (request) =>
+    request.params.action === "open" && request.params.tabId === "tab-2"
+  );
+  await newTab.click();
+  await daemon.waitForRequest("browser_agent", (request) =>
+    request.params.action === "open" && request.params.tabId === "tab-3"
+  );
+
+  await expect(page.locator(".pf-browser-tab")).toHaveCount(2);
+  await expect(page.locator(".pf-browser-tab").nth(1)).toHaveAttribute("aria-selected", "true");
+  await page.waitForTimeout(220);
+  await expect(page.locator(".pf-browser-tab").nth(1)).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".pf-browser-status")).toHaveText("Connected");
+  await expect(page.locator(".pf-browser-error")).toHaveCount(0);
+});
+
 test("Browser tab close control is a native button", async ({ page }) => {
   const daemon = new FakeDaemon();
   await daemon.install(page);
