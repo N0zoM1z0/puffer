@@ -1293,6 +1293,91 @@ test("Codex chat imports local credential before first turn", async ({ page }) =
   });
 });
 
+test("late credential import failures do not pollute a newly selected session", async ({ page }) => {
+  const daemon = new FakeDaemon({
+    sessions: [
+      {
+        sessionId: "session-alpha-import",
+        displayName: "Alpha import",
+        title: "Alpha import",
+        cwd: "/tmp/puffer",
+        folderPath: "/tmp/puffer",
+        updatedAtMs: baseTime,
+        createdAtMs: baseTime - 60_000,
+        eventCount: 1,
+        providerId: "openai",
+        modelId: "gpt-5",
+        timeline: [
+          {
+            kind: "assistant_message",
+            id: "alpha-import-seed",
+            text: "Alpha import transcript",
+            createdAtMs: baseTime - 30_000
+          }
+        ]
+      },
+      {
+        sessionId: "session-beta-import",
+        displayName: "Beta import",
+        title: "Beta import",
+        cwd: "/tmp/puffer",
+        folderPath: "/tmp/puffer",
+        updatedAtMs: baseTime - 1_000,
+        createdAtMs: baseTime - 120_000,
+        eventCount: 1,
+        providerId: "anthropic",
+        modelId: "test-model",
+        timeline: [
+          {
+            kind: "assistant_message",
+            id: "beta-import-seed",
+            text: "Beta import transcript",
+            createdAtMs: baseTime - 90_000
+          }
+        ]
+      }
+    ],
+    auth: [
+      {
+        providerId: "anthropic",
+        kind: "api_key",
+        email: null,
+        expiresAtMs: null,
+        scopes: [],
+        planType: null,
+        organizationName: null
+      }
+    ],
+    externalCredentials: [
+      {
+        providerId: "openai",
+        source: "codex",
+        kind: "oauth",
+        description: "Import Codex OAuth",
+        sourcePath: "/home/test/.codex/auth.json"
+      }
+    ]
+  });
+  daemon.delayResponse("import_external_credential", () => true, 180);
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openSession(page, /Alpha import/);
+  await expect(page.getByText("Alpha import transcript")).toBeVisible();
+  await page.locator(".pf-composer textarea").fill("Needs Codex import");
+  daemon.failNext("import_external_credential", "codex import failed");
+  await page.getByRole("button", { name: "Send" }).click();
+  await daemon.waitForRequest("import_external_credential");
+
+  await openSession(page, /Beta import/);
+  await expect(page.getByText("Beta import transcript")).toBeVisible();
+  await page.waitForTimeout(230);
+
+  await expect(page.getByText("Beta import transcript")).toBeVisible();
+  await expect(page.getByText("Provider disconnected")).toHaveCount(0);
+  await expect(page.getByText("codex import failed")).toHaveCount(0);
+});
+
 
 for (const scenario of [
   {

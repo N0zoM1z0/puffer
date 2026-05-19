@@ -1119,6 +1119,9 @@
       const importable = importableCredentialForProvider(requestedProviderId);
       if (importable) {
         const imported = await importCredentialForTurn(importable);
+        if (selectedSession?.id !== originSessionId || sessionLoadGeneration !== originLoadGeneration) {
+          return false;
+        }
         if (!imported || !providerIsAuthenticated(requestedProviderId)) {
           const detail = `Reconnect ${requestedProviderId} before continuing this session.`;
           statusMessage = detail;
