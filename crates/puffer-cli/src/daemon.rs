@@ -3084,7 +3084,7 @@ mod tests {
 
         server.join().expect("discovery server");
         assert_eq!(response["providerId"], "openai");
-        assert_eq!(response["modelId"], "gpt-5");
+        assert_eq!(response["modelId"], "gpt-local-discovered");
     }
 
     #[test]
@@ -3120,7 +3120,7 @@ mod tests {
                 let params = json!({
                     "cwd": workspace_root.display().to_string(),
                     "providerId": "codex",
-                    "modelId": "codex/gpt-5",
+                    "modelId": "codex/gpt-local-discovered",
                 });
                 run_off_runtime(move || handle_create_session(&state, &params)).await
             })
@@ -3128,7 +3128,7 @@ mod tests {
 
         server.join().expect("discovery server");
         assert_eq!(response["providerId"], "openai");
-        assert_eq!(response["modelId"], "gpt-5");
+        assert_eq!(response["modelId"], "gpt-local-discovered");
     }
 
     #[test]
@@ -3164,7 +3164,7 @@ mod tests {
                 let params = json!({
                     "cwd": workspace_root.display().to_string(),
                     "providerId": "OpenAI",
-                    "modelId": "OpenAI/gpt-5",
+                    "modelId": "OpenAI/gpt-local-discovered",
                 });
                 run_off_runtime(move || handle_create_session(&state, &params)).await
             })
@@ -3172,7 +3172,7 @@ mod tests {
 
         server.join().expect("discovery server");
         assert_eq!(response["providerId"], "openai");
-        assert_eq!(response["modelId"], "gpt-5");
+        assert_eq!(response["modelId"], "gpt-local-discovered");
     }
 
     #[test]
