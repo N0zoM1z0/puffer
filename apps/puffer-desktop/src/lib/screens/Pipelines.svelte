@@ -91,6 +91,12 @@
     workflowSlug: string;
     selectedNodeId: string | null;
   };
+  type SubscriptionTrigger = Extract<WorkflowDefinition["trigger"], { type: "subscription" }>;
+  type CronTrigger = Extract<WorkflowDefinition["trigger"], { type: "cron" }>;
+  type TriggerDraft = {
+    subscription?: SubscriptionTrigger;
+    cron?: CronTrigger;
+  };
 
   let { workspaceRoot = "" }: Props = $props();
 
@@ -103,6 +109,8 @@
   let loading = $state(true);
   let error = $state<string | null>(null);
   let usingStarterDraft = $state(true);
+  let localDraftHydrated = $state(false);
+  let triggerDrafts = $state<Record<string, TriggerDraft>>({});
   let saveNotice = $state("Draft changes are local until workflow save lands in the daemon.");
 
   let workflows = $derived(editorWorkflows);
@@ -194,16 +202,24 @@
     }
   }
 
-  function writeLocalDraft() {
-    if (typeof window === "undefined" || !usingStarterDraft || editorWorkflows.length === 0) return;
+  function writeLocalDraftSnapshot(
+    workflows: EditableWorkflow[] = editorWorkflows,
+    slug: string = workflowSlug,
+    nodeId: string | null = selectedNodeId
+  ) {
+    if (typeof window === "undefined" || !localDraftHydrated || !usingStarterDraft || workflows.length === 0) return;
     window.localStorage.setItem(
       LOCAL_DRAFT_KEY,
       JSON.stringify({
-        workflows: editorWorkflows,
-        workflowSlug,
-        selectedNodeId
+        workflows,
+        workflowSlug: slug,
+        selectedNodeId: nodeId
       })
     );
+  }
+
+  function writeLocalDraft() {
+    writeLocalDraftSnapshot();
   }
 
   function currentLocalDraft(): LocalDraft | null {
@@ -280,6 +296,8 @@
   }
 
   onMount(() => {
+    applyLocalDraft(readLocalDraft());
+    localDraftHydrated = true;
     void refresh();
     measure();
     const ro = new ResizeObserver(measure);
@@ -306,9 +324,11 @@
   $effect(() => {
     const workingDir = starterWorkingDir();
     if (!usingStarterDraft || !workingDir) return;
-    editorWorkflows = editorWorkflows.map((item) => {
+    let changed = false;
+    const nextWorkflows = editorWorkflows.map((item) => {
       if (item.slug !== "agent-review-pipeline") return item;
       if (item.pipeline.working_dir && item.pipeline.working_dir !== "/Users/shou/corbina") return item;
+      changed = true;
       return {
         ...item,
         pipeline: {
@@ -317,6 +337,7 @@
         }
       };
     });
+    if (changed) editorWorkflows = nextWorkflows;
   });
 
   $effect(() => {
@@ -341,7 +362,7 @@
       if (next.workflows.length > 0) {
         editorWorkflows = next.workflows.map(editableFromWorkflow);
       } else {
-        applyLocalDraft(draftBeforeRefresh ?? readLocalDraft());
+        applyLocalDraft(currentLocalDraft() ?? draftBeforeRefresh ?? readLocalDraft());
       }
       if (!workflowSlug || !editorWorkflows.some((item) => item.slug === workflowSlug)) {
         workflowSlug = editorWorkflows[0]?.slug ?? "agent-review-pipeline";
@@ -350,7 +371,7 @@
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
       usingStarterDraft = true;
-      applyLocalDraft(draftBeforeRefresh ?? readLocalDraft());
+      applyLocalDraft(currentLocalDraft() ?? draftBeforeRefresh ?? readLocalDraft());
     } finally {
       loading = false;
       setTimeout(measure, 0);
@@ -374,7 +395,9 @@
 
   function updateCurrentWorkflow(mutator: (item: EditableWorkflow) => EditableWorkflow) {
     if (!workflow) return;
-    editorWorkflows = editorWorkflows.map((item) => (item.slug === workflow.slug ? mutator(item) : item));
+    const nextWorkflows = editorWorkflows.map((item) => (item.slug === workflow.slug ? mutator(item) : item));
+    editorWorkflows = nextWorkflows;
+    writeLocalDraftSnapshot(nextWorkflows);
     saveNotice = "Edited locally. Save/export wiring can use this workflow shape.";
   }
 
@@ -405,13 +428,34 @@
   }
 
   function setTriggerType(type: "subscription" | "cron") {
-    updateCurrentWorkflow((item) => ({
-      ...item,
-      trigger:
-        type === "cron"
-          ? { type: "cron", cron: "0 9 * * 1-5" }
-          : { type: "subscription", source_topic: "workspace.task.created", pattern: "*" }
-    }));
+    if (!workflow) return;
+    const slug = workflow.slug;
+    const nextDrafts = {
+      ...triggerDrafts,
+      [slug]: {
+        ...(triggerDrafts[slug] ?? {}),
+        ...draftFromTrigger(workflow.trigger)
+      }
+    };
+    triggerDrafts = nextDrafts;
+    const nextWorkflows = editorWorkflows.map((item) => {
+      if (item.slug !== slug) return item;
+      return {
+        ...item,
+        trigger:
+          type === "cron"
+            ? nextDrafts[item.slug]?.cron ?? { type: "cron", cron: "0 9 * * 1-5" }
+            : nextDrafts[item.slug]?.subscription ?? { type: "subscription", source_topic: "workspace.task.created", pattern: "*" }
+      };
+    });
+    editorWorkflows = nextWorkflows;
+    writeLocalDraftSnapshot(nextWorkflows);
+    saveNotice = "Edited locally. Save/export wiring can use this workflow shape.";
+  }
+
+  function draftFromTrigger(trigger: WorkflowDefinition["trigger"]): TriggerDraft {
+    if (trigger.type === "cron") return { cron: { ...trigger } };
+    return { subscription: { ...trigger } };
   }
 
   function updateNode(id: string, patch: Partial<EditablePipelineNode>) {
@@ -825,13 +869,25 @@
               <span>Enabled</span>
               <input type="checkbox" checked={workflow.enabled} onchange={(event) => updateWorkflowField("enabled", event.currentTarget.checked)} />
             </label>
-            <label>
+            <div class="pf-editor-field">
               <span>Trigger type</span>
-              <select value={workflow.trigger.type} onchange={(event) => setTriggerType(event.currentTarget.value as "subscription" | "cron")}>
-                <option value="subscription">Subscription</option>
-                <option value="cron">Cron</option>
-              </select>
-            </label>
+              <div class="pf-provider-switcher" role="group" aria-label="Trigger type">
+                <button
+                  type="button"
+                  data-selected={workflow.trigger.type === "subscription"}
+                  onclick={() => setTriggerType("subscription")}
+                >
+                  Subscription
+                </button>
+                <button
+                  type="button"
+                  data-selected={workflow.trigger.type === "cron"}
+                  onclick={() => setTriggerType("cron")}
+                >
+                  Cron
+                </button>
+              </div>
+            </div>
             {#if workflow.trigger.type === "cron"}
               <label>
                 <span>Cron</span>
@@ -1196,7 +1252,8 @@
     margin-left: auto;
   }
 
-  .pf-editor-panel label {
+  .pf-editor-panel label,
+  .pf-editor-field {
     display: flex;
     flex-direction: column;
     gap: 5px;
@@ -1206,7 +1263,6 @@
   }
 
   .pf-editor-panel input,
-  .pf-editor-panel select,
   .pf-editor-panel textarea {
     width: 100%;
     box-sizing: border-box;
@@ -1227,7 +1283,6 @@
   }
 
   .pf-editor-panel input:focus,
-  .pf-editor-panel select:focus,
   .pf-editor-panel textarea:focus {
     border-color: var(--puffer-accent);
     box-shadow: 0 0 0 2px color-mix(in oklab, var(--puffer-accent) 18%, transparent);
@@ -1245,7 +1300,7 @@
 
   .pf-provider-switcher {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
     gap: 6px;
   }
 

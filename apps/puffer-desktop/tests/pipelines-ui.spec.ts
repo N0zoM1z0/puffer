@@ -41,7 +41,7 @@ test("local workflow draft survives failed refresh", async ({ page }) => {
 
   const workflowRequests = daemon.requests.filter((request) => request.method === "workflow_list").length;
   daemon.failNext("workflow_list", "workflow list unavailable");
-  await page.getByRole("button", { name: "Refresh" }).click();
+  await page.locator(".pf-pipe-top-right").getByRole("button", { name: "Refresh" }).click();
 
   await expect.poll(() =>
     daemon.requests.filter((request) => request.method === "workflow_list").length
@@ -66,4 +66,28 @@ test("provider switch preserves customized agent fields", async ({ page }) => {
   await expect(inspector.getByLabel("Agent name")).toHaveValue("Custom implementer");
   await expect(inspector.getByLabel("Model")).toHaveValue("custom-model");
   await expect(inspector.getByLabel("Tools")).toHaveValue("custom-tool, bash");
+});
+
+test("trigger type switch preserves prior trigger fields", async ({ page }) => {
+  const daemon = new FakeDaemon({ workspaceRoot: "/tmp/puffer-workspace" });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: "Pipelines" }).click();
+  await daemon.waitForRequest("workflow_list");
+
+  const config = page.locator(".pf-editor-config");
+  await config.getByLabel("Source topic").fill("custom.topic.created");
+  await config.getByLabel("Pattern").fill("ship|review");
+  const triggerType = config.getByRole("group", { name: "Trigger type" });
+  await triggerType.getByRole("button", { name: "Cron" }).click();
+  const cronInput = config.locator('label:has-text("Cron") input');
+  await cronInput.fill("15 9 * * 1-5");
+  await triggerType.getByRole("button", { name: "Subscription" }).click();
+
+  await expect(config.getByLabel("Source topic")).toHaveValue("custom.topic.created");
+  await expect(config.getByLabel("Pattern")).toHaveValue("ship|review");
+
+  await triggerType.getByRole("button", { name: "Cron" }).click();
+  await expect(cronInput).toHaveValue("15 9 * * 1-5");
 });
