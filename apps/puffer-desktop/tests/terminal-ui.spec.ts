@@ -96,3 +96,21 @@ test("Terminal ignores stale focus responses before attaching input", async ({ p
   const write = await daemon.waitForRequest("pty_write");
   expect(write.params.ptyId).toBe("pty-2");
 });
+
+test("Terminal decodes UTF-8 PTY output", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: /Browser regression/ }).first().click();
+  await page.locator(".pf-agent-tabs").getByRole("button", { name: "Terminal", exact: true }).click();
+  await daemon.waitForRequest("pty_open", (request) => request.params.sessionId === "session-browser");
+  await daemon.waitForRequest("pty_replay");
+
+  daemon.emit("pty:pty-1:data", {
+    data: Buffer.from("构建完成\n", "utf8").toString("base64"),
+    seq: 1
+  });
+
+  await expect(page.locator(".pf-terminal-host")).toContainText("构建完成");
+});

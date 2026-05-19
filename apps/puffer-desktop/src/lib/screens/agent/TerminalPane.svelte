@@ -219,7 +219,9 @@
       seenSeqByPty.set(ptyId, event.seq);
     }
     try {
-      term.write(atob(event.data));
+      const raw = atob(event.data);
+      const bytes = Uint8Array.from(raw, (char) => char.charCodeAt(0));
+      term.write(new TextDecoder().decode(bytes));
     } catch {
       /* malformed frame - skip */
     }
