@@ -523,6 +523,29 @@ test("late Browser reload failures do not mark the active tab", async ({ page })
   await expect(page.locator(".pf-browser-error")).toHaveCount(0);
 });
 
+test("Browser state errors disable active tab controls", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openRegressionAgent(page);
+  await openAgentPanel(page, "Browser");
+  await daemon.waitForRequest("browser_open", (request) =>
+    request.params.sessionId === "session-browser:browser:tab-1"
+  );
+
+  daemon.emit("browser:session-browser:browser:tab-1:state", {
+    url: "about:blank",
+    title: "",
+    loading: false,
+    error: "chrome crashed"
+  });
+
+  await expect(page.locator(".pf-browser-status")).toHaveText("Chrome error");
+  await expect(page.locator(".pf-browser-error")).toContainText("chrome crashed");
+  await expect(page.getByLabel("URL")).toBeDisabled();
+});
+
 test("Browser tab list event can clear stale tabs", async ({ page }) => {
   const daemon = new FakeDaemon();
   await daemon.install(page);

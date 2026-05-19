@@ -474,6 +474,7 @@
     const nextUrl = next.url || existing?.url || "about:blank";
     const nextTitle = next.title ?? "";
     const nextError = next.error ?? null;
+    const nextConnected = !nextError;
     const nextStatus = nextError ? "Chrome error" : next.loading ? "Loading" : "Connected";
     updateTab(tabId, {
       url: nextUrl,
@@ -481,7 +482,7 @@
       loading: next.loading,
       error: nextError,
       status: nextStatus,
-      connected: !nextError,
+      connected: nextConnected,
       favicon: faviconFor(nextUrl)
     });
     if (tabId !== activeTabId) return;
@@ -491,6 +492,7 @@
     loading = next.loading;
     error = nextError;
     status = nextStatus;
+    connected = nextConnected;
   }
 
   function drawFrame(frame: BrowserFrameEvent) {
