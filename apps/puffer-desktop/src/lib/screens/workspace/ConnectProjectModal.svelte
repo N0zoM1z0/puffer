@@ -230,6 +230,13 @@
       });
       switchedToRemote = true;
     } catch (e) {
+      if (previousHandshake) {
+        try {
+          await switchDaemonClient(previousHandshake);
+        } catch (rollbackError) {
+          console.warn("failed to restore previous daemon after remote connection failure", rollbackError);
+        }
+      }
       sshErrorHint = deriveSshHint(String(e instanceof Error ? e.message : e), sshTarget);
       throw e;
     }
