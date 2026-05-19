@@ -27,7 +27,7 @@ test("desktop client speaks the real daemon WebSocket protocol", async ({ page }
   expect(typeof turnRequest.id).toBe("string");
   expect(turnRequest.params).toMatchObject({
     sessionId: "session-browser",
-    providerId: "codex",
+    providerId: "openai",
     modelId: "test-model"
   });
 
