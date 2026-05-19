@@ -634,6 +634,8 @@
   function closeTab(tabId: string, event?: Event) {
     event?.stopPropagation();
     const requestedAtGeneration = sessionGeneration;
+    const requestedRootSessionId = activeRootSessionId;
+    const fallbackSessionId = backendSessionId(tabId);
     const requestedAtCreationVersion = tabCreationVersion;
     const closeVersion = tabStateVersion + 1;
     void browserTabClose(sessionId, tabId)
@@ -646,7 +648,14 @@
         ) return;
         applyTabsState(state, { allowEmpty: true });
       })
-      .catch(() => browserClose(backendSessionId(tabId)).catch(() => {}));
+      .catch(() => {
+        if (
+          disposed ||
+          requestedAtGeneration !== sessionGeneration ||
+          activeRootSessionId !== requestedRootSessionId
+        ) return;
+        void browserClose(fallbackSessionId).catch(() => {});
+      });
     const index = tabs.findIndex((tab) => tab.id === tabId);
     const nextTabs = tabs.filter((tab) => tab.id !== tabId);
     tabStateVersion = closeVersion;
