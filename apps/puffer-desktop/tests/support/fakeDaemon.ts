@@ -1094,7 +1094,7 @@ export class FakeDaemon {
         hover: {
           operation: "hover",
           filePath: path,
-          result: "fixture() -> demo value"
+          result: `fixture() -> demo value at ${line}:${character}`
         },
         goToDefinition: {
           operation: "goToDefinition",

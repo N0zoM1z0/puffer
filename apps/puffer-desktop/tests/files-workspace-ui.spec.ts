@@ -218,6 +218,50 @@ test("Files tab opens symbol context from the editor cursor", async ({ page }) =
   await expect(popup).toHaveCount(0);
 });
 
+test("Files tab ignores stale LSP inspect responses", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  daemon.delayResponse("lsp_inspect", () => true, 180);
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openRegressionAgent(page);
+  await openFilesPanel(page);
+
+  await page.getByRole("tab", { name: /lib\.rs/ }).click();
+  const editor = page.getByLabel("Edit file contents");
+  await expect(editor).toHaveValue("pub fn fixture() {}\n");
+  await editor.evaluate((node) => {
+    const textarea = node as HTMLTextAreaElement;
+    textarea.focus();
+    textarea.setSelectionRange(0, 0);
+  });
+  await editor.press("ArrowRight");
+  const first = await daemon.waitForRequest(
+    "lsp_inspect",
+    (candidate) => candidate.params.path === "/tmp/puffer/src/lib.rs"
+  );
+
+  await editor.evaluate((node) => {
+    const textarea = node as HTMLTextAreaElement;
+    textarea.focus();
+    textarea.setSelectionRange(9, 9);
+  });
+  await editor.press("ArrowRight");
+  const second = await daemon.waitForRequest(
+    "lsp_inspect",
+    (candidate) =>
+      candidate.params.path === "/tmp/puffer/src/lib.rs" &&
+      candidate.params.character !== first.params.character
+  );
+
+  const popup = page.getByLabel("Symbol references");
+  await expect(popup.locator(".symbol")).toContainText("fixture");
+  await expect(popup).toContainText(`at ${second.params.line}:${second.params.character}`);
+  await page.waitForTimeout(230);
+  await expect(popup.locator(".symbol")).toContainText("fixture");
+  await expect(popup).toContainText(`at ${second.params.line}:${second.params.character}`);
+});
+
 test("New agent modal closes with Escape", async ({ page }) => {
   const daemon = new FakeDaemon();
   await daemon.install(page);

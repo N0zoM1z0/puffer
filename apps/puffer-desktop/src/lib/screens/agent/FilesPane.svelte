@@ -61,6 +61,7 @@
   let lspError = $state<string | null>(null);
   let lspResult = $state<LspInspectResult | null>(null);
   let lspAnchor = $state<{ line: number; character: number } | null>(null);
+  let lspInspectGeneration = 0;
   let editorGutterEl = $state<HTMLDivElement | null>(null);
   let editorHighlightEl = $state<HTMLPreElement | null>(null);
   let fileTabsReady = $state(false);
@@ -659,6 +660,7 @@
   }
 
   function clearLspState() {
+    lspInspectGeneration += 1;
     selectedSymbol = null;
     lspLoading = false;
     lspError = null;
@@ -765,17 +767,33 @@
 
   async function inspectSymbol(lineIndex: number, character: number, symbol: string) {
     if (!activePath || !activeFile || activeFile.encoding !== "utf8") return;
+    const generation = ++lspInspectGeneration;
+    const inspectPath = activePath;
+    const inspectRoot = root;
     selectedSymbol = symbol;
     lspAnchor = { line: lineIndex, character };
     lspLoading = true;
     lspError = null;
     lspResult = null;
     try {
-      lspResult = await lspInspect(activePath, root, lineIndex, character);
+      const result = await lspInspect(inspectPath, inspectRoot, lineIndex, character);
+      if (
+        generation !== lspInspectGeneration ||
+        activePath !== inspectPath ||
+        root !== inspectRoot ||
+        selectedSymbol !== symbol
+      ) return;
+      lspResult = result;
     } catch (err) {
+      if (
+        generation !== lspInspectGeneration ||
+        activePath !== inspectPath ||
+        root !== inspectRoot ||
+        selectedSymbol !== symbol
+      ) return;
       lspError = err instanceof Error ? err.message : String(err);
     } finally {
-      lspLoading = false;
+      if (generation === lspInspectGeneration) lspLoading = false;
     }
   }
 
