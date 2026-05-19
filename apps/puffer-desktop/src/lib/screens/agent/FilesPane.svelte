@@ -634,7 +634,7 @@
         saveError = err instanceof Error ? err.message : String(err);
       }
     } finally {
-      if (activePath === target) saving = false;
+      saving = false;
     }
   }
 

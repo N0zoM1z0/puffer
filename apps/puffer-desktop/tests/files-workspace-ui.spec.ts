@@ -148,6 +148,37 @@ test("Files tab keeps dirty edits visible after save failure", async ({ page }) 
   await expect(editor).toHaveValue(draft);
 });
 
+test("Files tab clears saving state after switching tabs during save", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  daemon.delayResponse(
+    "write_file",
+    (request) => request.params.path === "/tmp/puffer/src/main.rs",
+    220
+  );
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openRegressionAgent(page);
+  await openFilesPanel(page);
+
+  const editor = page.getByLabel("Edit file contents");
+  await expect(editor).toHaveValue("fn main() {}\n");
+  await editor.fill("fn main() {\n    println!(\"saving\");\n}\n");
+  await page.getByRole("button", { name: "Save" }).click();
+  await daemon.waitForRequest(
+    "write_file",
+    (candidate) => candidate.params.path === "/tmp/puffer/src/main.rs"
+  );
+
+  await page.getByRole("tab", { name: /lib\.rs/ }).click();
+  await expect(editor).toHaveValue("pub fn fixture() {}\n");
+  await editor.fill("pub fn fixture() {\n    println!(\"ready\");\n}\n");
+
+  const save = page.getByRole("button", { name: "Save" });
+  await expect(save).toBeVisible();
+  await expect(save).toBeEnabled();
+});
+
 test("Files tab opens symbol context from the editor cursor", async ({ page }) => {
   const daemon = new FakeDaemon();
   await daemon.install(page);
