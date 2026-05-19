@@ -97,6 +97,25 @@ test("Terminal ignores stale focus responses before attaching input", async ({ p
   expect(write.params.ptyId).toBe("pty-2");
 });
 
+test("Terminal stops accepting input immediately after closing the active PTY", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  daemon.delayResponse("pty_close", (request) => request.params.ptyId === "pty-1", 3_000);
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: /Browser regression/ }).first().click();
+  await page.locator(".pf-agent-tabs").getByRole("button", { name: "Terminal", exact: true }).click();
+  await daemon.waitForRequest("pty_open", (request) => request.params.sessionId === "session-browser");
+  await daemon.waitForRequest("pty_replay");
+
+  await page.getByRole("button", { name: "Close Terminal 1" }).click();
+  await daemon.waitForRequest("pty_close", (request) => request.params.ptyId === "pty-1");
+  await expect(page.getByRole("tab", { name: /Terminal 1/ })).toHaveCount(0, { timeout: 250 });
+
+  await page.keyboard.type("x");
+  expect(daemon.requests.filter((request) => request.method === "pty_write")).toHaveLength(0);
+});
+
 test("Terminal decodes UTF-8 PTY output", async ({ page }) => {
   const daemon = new FakeDaemon();
   await daemon.install(page);

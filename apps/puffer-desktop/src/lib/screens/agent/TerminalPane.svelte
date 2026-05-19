@@ -240,10 +240,10 @@
   async function closeTerminalTab(event: Event, ptyId: string) {
     event.stopPropagation();
     const closingIndex = ptyTabs.findIndex((tab) => tab.ptyId === ptyId);
-    await closePty(ptyId).catch(() => {});
     const nextTabs = ptyTabs.filter((tab) => tab.ptyId !== ptyId);
     ptyTabs = nextTabs;
     seenSeqByPty.delete(ptyId);
+    void closePty(ptyId).catch(() => {});
     if (activePtyId !== ptyId) return;
     const next = nextTabs[Math.min(closingIndex, nextTabs.length - 1)] ?? nextTabs[nextTabs.length - 1];
     if (next) {
