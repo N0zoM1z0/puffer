@@ -289,9 +289,7 @@ fn write_remote_file(
 fn ensure_local_daemon(
     launcher: State<'_, SharedDaemonLauncher>,
 ) -> Result<daemon_launcher::DaemonHandshake, String> {
-    launcher
-        .ensure_started()
-        .map_err(|error| error.to_string())
+    launcher.ensure_started().map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -300,8 +298,24 @@ fn restart_local_daemon(
     cwd: String,
 ) -> Result<daemon_launcher::DaemonHandshake, String> {
     launcher
-        .restart_local(PathBuf::from(cwd))
+        .restart_local(expand_home_path(&cwd))
         .map_err(|error| error.to_string())
+}
+
+fn expand_home_path(raw: &str) -> PathBuf {
+    let Some(home) = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+    else {
+        return PathBuf::from(raw);
+    };
+    if raw == "~" {
+        return home;
+    }
+    if let Some(rest) = raw.strip_prefix("~/").or_else(|| raw.strip_prefix("~\\")) {
+        return home.join(rest);
+    }
+    PathBuf::from(raw)
 }
 
 #[tauri::command]

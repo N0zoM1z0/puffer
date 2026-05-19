@@ -2302,13 +2302,29 @@ fn git_output(cwd: &Path, args: &[&str]) -> Result<String> {
 }
 
 fn validate_git_clone_dest(allowed_roots: &[PathBuf], base: &Path, raw: &str) -> Result<PathBuf> {
-    let raw_path = Path::new(raw);
+    let raw_path = expand_home_path(raw);
     let candidate = if raw_path.is_absolute() {
-        raw_path.to_path_buf()
+        raw_path
     } else {
         base.join(raw_path)
     };
     files::validate_write_path(allowed_roots, &candidate.display().to_string())
+}
+
+fn expand_home_path(raw: &str) -> PathBuf {
+    let Some(home) = env::var_os("HOME")
+        .or_else(|| env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
+    else {
+        return PathBuf::from(raw);
+    };
+    if raw == "~" {
+        return home;
+    }
+    if let Some(rest) = raw.strip_prefix("~/").or_else(|| raw.strip_prefix("~\\")) {
+        return home.join(rest);
+    }
+    PathBuf::from(raw)
 }
 
 fn validate_pty_cwd(allowed_roots: &[PathBuf], cwd: &Path) -> Result<PathBuf> {

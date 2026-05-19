@@ -62,7 +62,7 @@ use serde_json::{json, Value};
 use std::collections::{HashMap, VecDeque};
 use std::io::{BufReader, Read};
 use std::net::SocketAddr;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -1571,7 +1571,7 @@ fn handle_create_session(state: &DaemonState, params: &Value) -> Result<Value> {
     let cwd = params
         .get("cwd")
         .and_then(|v| v.as_str())
-        .map(std::path::PathBuf::from)
+        .map(expand_home_path)
         .unwrap_or_else(|| state.cwd.clone());
     let routing = resolve_create_session_routing(
         state,
@@ -1633,6 +1633,29 @@ fn ensure_session_cwd(cwd: &Path) -> Result<()> {
     }
     std::fs::create_dir_all(cwd)
         .with_context(|| format!("failed to create session cwd {}", cwd.display()))
+}
+
+fn expand_home_path(raw: &str) -> PathBuf {
+    expand_home_path_with(raw, home_dir())
+}
+
+fn expand_home_path_with(raw: &str, home: Option<PathBuf>) -> PathBuf {
+    let Some(home) = home else {
+        return PathBuf::from(raw);
+    };
+    if raw == "~" {
+        return home;
+    }
+    if let Some(rest) = raw.strip_prefix("~/").or_else(|| raw.strip_prefix("~\\")) {
+        return home.join(rest);
+    }
+    PathBuf::from(raw)
+}
+
+fn home_dir() -> Option<PathBuf> {
+    std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from)
 }
 
 fn resolve_create_session_routing(
@@ -1748,7 +1771,7 @@ fn handle_git_clone(state: &Arc<DaemonState>, params: &Value) -> Result<Value> {
     let depth = params.get("depth").and_then(|v| v.as_u64());
 
     let dest = {
-        let p = std::path::PathBuf::from(dest_raw);
+        let p = expand_home_path(dest_raw);
         if p.is_absolute() {
             p
         } else {
@@ -1908,7 +1931,7 @@ fn handle_pty_open(state: &DaemonState, params: &Value) -> Result<Value> {
     let cwd = params
         .get("cwd")
         .and_then(|v| v.as_str())
-        .map(std::path::PathBuf::from)
+        .map(expand_home_path)
         .unwrap_or_else(|| state.cwd.clone());
     let cols = params
         .get("cols")
@@ -2736,8 +2759,8 @@ fn apply_daemon_yolo_mode(app_state: &mut AppState) {
 mod tests {
     use super::{
         apply_daemon_yolo_mode, apply_turn_model_override, apply_turn_request_options,
-        handle_create_session, model_descriptor_dto, resolve_create_session_model_id,
-        run_off_runtime, DaemonState, TurnRequestOptions,
+        expand_home_path_with, handle_create_session, model_descriptor_dto,
+        resolve_create_session_model_id, run_off_runtime, DaemonState, TurnRequestOptions,
     };
     use indexmap::IndexMap;
     use puffer_config::{ensure_workspace_dirs, ConfigPaths, PufferConfig};
@@ -2747,6 +2770,7 @@ mod tests {
     };
     use puffer_session_store::{SessionMetadata, SessionStore};
     use serde_json::json;
+    use std::path::PathBuf;
     use std::sync::{Mutex, MutexGuard, OnceLock};
     use uuid::Uuid;
 
@@ -2799,6 +2823,34 @@ mod tests {
                 None => std::env::remove_var("PUFFER_DISCOVERY_CACHE_PATH"),
             }
             let _ = std::fs::remove_file(&self.cache_path);
+        }
+    }
+
+    struct TestEnvGuard {
+        key: &'static str,
+        previous: Option<std::ffi::OsString>,
+        _lock: MutexGuard<'static, ()>,
+    }
+
+    impl TestEnvGuard {
+        fn set(key: &'static str, value: &PathBuf) -> Self {
+            let lock = discovery_cache_env_lock();
+            let previous = std::env::var_os(key);
+            std::env::set_var(key, value);
+            Self {
+                key,
+                previous,
+                _lock: lock,
+            }
+        }
+    }
+
+    impl Drop for TestEnvGuard {
+        fn drop(&mut self) {
+            match self.previous.as_ref() {
+                Some(value) => std::env::set_var(self.key, value),
+                None => std::env::remove_var(self.key),
+            }
         }
     }
 
@@ -2915,6 +2967,65 @@ mod tests {
         let session_id = uuid::Uuid::parse_str(session_id).expect("valid session id");
         let session = store.load_session(session_id).expect("stored session");
         assert_eq!(session.metadata.cwd, missing);
+    }
+
+    #[test]
+    fn create_session_expands_home_cwd() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let home = temp.path().join("home");
+        let _home_guard = TestEnvGuard::set("HOME", &home);
+        let workspace_root = temp.path().join("workspace");
+        let paths = ConfigPaths {
+            workspace_root: workspace_root.clone(),
+            workspace_config_dir: workspace_root.join(".puffer"),
+            user_config_dir: home.join(".puffer"),
+            builtin_resources_dir: workspace_root.join("resources"),
+        };
+        ensure_workspace_dirs(&paths).expect("workspace dirs");
+        let state = DaemonState::load(
+            workspace_root,
+            paths.clone(),
+            "token".into(),
+            true,
+            false,
+            false,
+        )
+        .expect("daemon state");
+        let expanded = home.join("src").join("project");
+
+        let response = handle_create_session(
+            &state,
+            &json!({
+                "cwd": "~/src/project",
+            }),
+        )
+        .expect("create session");
+
+        assert!(expanded.is_dir());
+        assert_eq!(response["cwd"], expanded.display().to_string());
+        let session_id = response["sessionId"].as_str().expect("sessionId");
+        let store = SessionStore::from_paths(&paths).expect("session store");
+        let session_id = uuid::Uuid::parse_str(session_id).expect("valid session id");
+        let session = store.load_session(session_id).expect("stored session");
+        assert_eq!(session.metadata.cwd, expanded);
+    }
+
+    #[test]
+    fn home_paths_expand_before_daemon_filesystem_operations() {
+        let home = PathBuf::from("/tmp/puffer-home");
+
+        assert_eq!(
+            expand_home_path_with("~", Some(home.clone())),
+            PathBuf::from("/tmp/puffer-home")
+        );
+        assert_eq!(
+            expand_home_path_with("~/src/project", Some(home.clone())),
+            PathBuf::from("/tmp/puffer-home/src/project")
+        );
+        assert_eq!(
+            expand_home_path_with("relative/project", Some(home)),
+            PathBuf::from("relative/project")
+        );
     }
 
     #[test]
