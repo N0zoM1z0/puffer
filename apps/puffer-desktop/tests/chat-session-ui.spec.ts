@@ -760,6 +760,27 @@ test("composer sends fast mode and permission mode with the turn request", async
       }
     ],
     providerModels: {
+      openai: [
+        {
+          id: "gpt-5",
+          displayName: "GPT-5",
+          provider: "openai",
+          api: "openai-responses",
+          contextWindow: 128000,
+          maxOutputTokens: 4096,
+          supportsReasoning: true,
+          thinkingOptions: [
+            {
+              id: "medium",
+              label: "Medium",
+              description: "Use medium reasoning effort.",
+              isDefault: true
+            }
+          ],
+          defaultThinkingOptionId: "medium",
+          isDefault: true
+        }
+      ],
       codex: [
         {
           id: "gpt-5",
@@ -898,6 +919,120 @@ test("composer controls handle provider-prefixed session model ids", async ({ pa
     providerId: "openai",
     modelId: "gpt-5",
     thinkingOptionId: "high"
+  });
+});
+
+test("composer does not send a default Claude model with OpenAI sessions", async ({ page }) => {
+  const daemon = new FakeDaemon({
+    auth: [
+      {
+        providerId: "openai",
+        kind: "oauth",
+        email: "tester@example.com",
+        expiresAtMs: null,
+        scopes: [],
+        planType: "test",
+        organizationName: null
+      },
+      {
+        providerId: "anthropic",
+        kind: "api_key",
+        email: null,
+        expiresAtMs: null,
+        scopes: [],
+        planType: null,
+        organizationName: null
+      }
+    ],
+    providers: [
+      {
+        id: "openai",
+        displayName: "OpenAI",
+        baseUrl: "",
+        defaultApi: "openai-responses",
+        modelCount: 1,
+        authModes: ["oauth"],
+        sourceKind: "test",
+        sourcePath: null
+      },
+      {
+        id: "anthropic",
+        displayName: "Anthropic",
+        baseUrl: "",
+        defaultApi: "anthropic-messages",
+        modelCount: 1,
+        authModes: ["api_key"],
+        sourceKind: "test",
+        sourcePath: null
+      }
+    ],
+    sessions: [
+      {
+        sessionId: "session-openai-claude-default",
+        displayName: "OpenAI with Claude default",
+        title: "OpenAI with Claude default",
+        cwd: "/tmp/puffer",
+        folderPath: "/tmp/puffer",
+        updatedAtMs: baseTime,
+        createdAtMs: baseTime - 60_000,
+        eventCount: 0,
+        providerId: "openai",
+        modelId: "claude-haiku-4-5-20251001",
+        timeline: []
+      }
+    ],
+    providerModels: {
+      openai: [
+        {
+          id: "gpt-5",
+          displayName: "GPT-5",
+          provider: "openai",
+          api: "openai-responses",
+          contextWindow: 128000,
+          maxOutputTokens: 4096,
+          supportsReasoning: false,
+          thinkingOptions: [],
+          defaultThinkingOptionId: null,
+          isDefault: true
+        }
+      ],
+      anthropic: [
+        {
+          id: "claude-haiku-4-5-20251001",
+          displayName: "Claude Haiku 4.5",
+          provider: "anthropic",
+          api: "anthropic-messages",
+          contextWindow: 200000,
+          maxOutputTokens: 4096,
+          supportsReasoning: false,
+          thinkingOptions: [],
+          defaultThinkingOptionId: null,
+          isDefault: true
+        }
+      ]
+    }
+  });
+  daemon.setSettingsConfig({
+    defaultProvider: "anthropic",
+    defaultModel: "claude-haiku-4-5-20251001"
+  });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openSession(page, /OpenAI with Claude default/);
+  const trigger = page.locator(".pf-composer .trigger");
+  await expect(trigger).not.toContainText("claude-haiku");
+  await expect(trigger).toContainText("gpt-5");
+
+  await page.locator(".pf-composer textarea").fill("Use OpenAI model");
+  await page.getByRole("button", { name: "Send" }).click();
+  const request = await daemon.waitForRequest(
+    "run_agent_turn",
+    (item) => item.params.message === "Use OpenAI model"
+  );
+  expect(request.params).toMatchObject({
+    providerId: "openai",
+    modelId: "gpt-5"
   });
 });
 

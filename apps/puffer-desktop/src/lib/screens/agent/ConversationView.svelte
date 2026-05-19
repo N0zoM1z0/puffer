@@ -454,6 +454,14 @@
   });
 
   $effect(() => {
+    if (!selectedProviderId || thinkingProviderId !== selectedProviderId || thinkingModels.length === 0) return;
+    if (selectedModelId && thinkingModels.some((model) => model.id === selectedModelId)) return;
+    const fallback = thinkingModels.find((model) => model.isDefault) ?? thinkingModels[0];
+    selectedModelId = fallback.id;
+    selectedThinkingOptionId = "";
+  });
+
+  $effect(() => {
     if (!thinkingAvailable) {
       selectedThinkingOptionId = "";
       return;
