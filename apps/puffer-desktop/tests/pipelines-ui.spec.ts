@@ -267,3 +267,31 @@ test("removing a node with dependents requires confirmation", async ({ page }) =
   await expect(inspector.getByLabel("Agent name")).toHaveValue("Claude reviewer");
   await expect(page.locator(".pf-pipe-graph").getByRole("button", { name: /Codex implementer/ })).toHaveCount(0);
 });
+
+test("edited workflow can be exported as JSON", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: (value: string) => {
+          (window as typeof window & { __copiedWorkflowJson?: string }).__copiedWorkflowJson = value;
+          return Promise.resolve();
+        }
+      }
+    });
+  });
+  const daemon = new FakeDaemon({ workspaceRoot: "/tmp/puffer-workspace" });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: "Pipelines" }).click();
+  await daemon.waitForRequest("workflow_list");
+  await page.locator(".pf-editor-config").getByLabel("Name").fill("Exported workflow");
+  await page.getByRole("button", { name: "Copy JSON" }).click();
+
+  const copied = await page.evaluate(() => (window as typeof window & { __copiedWorkflowJson?: string }).__copiedWorkflowJson ?? "");
+  const exported = JSON.parse(copied);
+  expect(exported.pipeline.name).toBe("Exported workflow");
+  expect(exported.pipeline.nodes).toHaveLength(3);
+  await expect(page.getByText("Workflow JSON copied to clipboard.")).toBeVisible();
+});

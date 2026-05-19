@@ -411,6 +411,29 @@
     saveNotice = "Edited locally. Save/export wiring can use this workflow shape.";
   }
 
+  async function copyWorkflowJson() {
+    if (!workflow) return;
+    const text = JSON.stringify(workflow, null, 2);
+    await writeClipboardText(text);
+    saveNotice = "Workflow JSON copied to clipboard.";
+  }
+
+  async function writeClipboardText(text: string) {
+    if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    if (typeof document === "undefined") return;
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand("copy");
+    textarea.remove();
+  }
+
   function updateWorkflowField(field: "slug" | "enabled" | "name" | "working_dir" | "concurrency", value: string | boolean | number | null) {
     if (!workflow) return;
     updateCurrentWorkflow((item) => {
@@ -801,6 +824,9 @@
           <Icon name="plus" size={12} />{provider.short}
         </button>
       {/each}
+      <button type="button" class="sc-btn" data-variant="ghost" data-size="sm" onclick={() => void copyWorkflowJson()} disabled={!workflow}>
+        <Icon name="copy" size={12} />Copy JSON
+      </button>
       <button type="button" class="sc-btn" data-variant="ghost" data-size="sm" onclick={refresh}>
         <Icon name="refresh" size={12} />Refresh
       </button>
