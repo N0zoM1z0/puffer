@@ -17,7 +17,7 @@
   type MemoryFile = {
     id: string;
     name: string;
-    path: string;
+    source: string;
     title: string;
     body: string;
     updated: string;
@@ -103,8 +103,8 @@
   let memoryFiles = $derived<MemoryFile[]>([
     {
       id: `${group.id}:project`,
-      name: "project.md",
-      path: `${group.path}/.puffer/memory/project.md`,
+      name: "Project overview",
+      source: group.path,
       title: group.label,
       body: `Workspace path: ${group.path}\n\nThis project currently has ${group.sessionCount} ${group.sessionCount === 1 ? "session" : "sessions"} in the local Puffer session store.`,
       updated: agents[0]?.elapsed ?? "now",
@@ -113,8 +113,8 @@
     },
     ...sortedSessions.slice(0, 5).map((session, index) => ({
       id: session.id,
-      name: `session-${index + 1}.md`,
-      path: `${group.path}/.puffer/memory/sessions/session-${index + 1}.md`,
+      name: sessionDisplayName(session) || `Session ${index + 1}`,
+      source: session.cwd || group.path,
       title: sessionDisplayTitle(session),
       body: `${sessionDisplayName(session)} last updated ${formatAge(session.updatedAtMs)} ago.\n\n${session.note ?? "No pinned session note yet."}`,
       updated: formatAge(session.updatedAtMs),
@@ -144,7 +144,7 @@
     </div>
     <div class="pf-fpb-counts">
       <span class="count"><span class="pip"></span>{agents.length} agents</span>
-      <span class="count done">{memoryFiles.length} memory files</span>
+      <span class="count done">{memoryFiles.length} memory previews</span>
     </div>
     <div class="pf-fpb-tools">
       <button
@@ -210,7 +210,7 @@
       <div class="pf-pmem-list">
         <div class="pf-pmem-list-head">
           <Icon name="file" size={12} />
-          Memory files
+          Memory previews
           <span class="n">{memoryFiles.length}</span>
         </div>
         {#each memoryFiles as file (file.id)}
@@ -230,7 +230,7 @@
         <article class="pf-pmem-detail">
           <div class="pf-pmem-detail-head">
             <span class="pf-pmem-kind" data-kind={selectedMemory.kind}>{selectedMemory.kind}</span>
-            <span class="path">{selectedMemory.path}</span>
+            <span class="path">{selectedMemory.source}</span>
             <button
               type="button"
               class="sc-btn"
@@ -264,8 +264,8 @@
       {:else}
         <div class="pf-pmem-empty">
           <div class="pf-pmem-empty-inner">
-            <div class="title">No memory files yet</div>
-            <div class="sub">Project memory will appear here as files under <code>.puffer/memory</code>.</div>
+            <div class="title">No memory previews yet</div>
+            <div class="sub">Project memory summaries will appear here when they are available.</div>
           </div>
         </div>
       {/if}

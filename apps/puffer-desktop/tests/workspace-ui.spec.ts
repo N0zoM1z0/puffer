@@ -149,6 +149,8 @@ test("project memory edit control is disabled until file editing is wired", asyn
 
   const memoryDetail = page.locator(".pf-pmem-detail");
   await expect(memoryDetail.getByRole("button", { name: "Edit" })).toBeDisabled();
+  await expect(page.locator(".pf-pmem-list-head")).toContainText("Memory previews");
+  await expect(memoryDetail.locator(".path")).not.toContainText(".puffer/memory");
 });
 
 test("workspace ignores stale grouped session refresh responses", async ({ page }) => {
