@@ -198,6 +198,11 @@
     };
   }
 
+  function mcpSubmitLabel(): string {
+    if (mcpSaving) return mcpEditingId ? "Updating…" : "Adding…";
+    return mcpEditingId ? "Update server" : "Add server";
+  }
+
   async function saveMcpServer() {
     const id = mcpForm.id.trim();
     const targetOrUrl = mcpTargetValue();
@@ -911,7 +916,7 @@
               disabled={!daemonReachable || mcpSaving || mcpDuplicateId || !mcpForm.id.trim() || !mcpTargetValue()}
               onclick={saveMcpServer}
             >
-              <Icon name="plus" size={12} />{mcpSaving ? "Saving…" : mcpEditingId ? "Update server" : "Add server"}
+              <Icon name="plus" size={12} />{mcpSubmitLabel()}
             </button>
           </div>
         </div>
