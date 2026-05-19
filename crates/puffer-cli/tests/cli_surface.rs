@@ -337,6 +337,50 @@ fn mcp_add_rejects_empty_targets_before_writing_manifest() {
         .join(".puffer/resources/mcp_servers/empty-http.yaml")
         .exists());
 
+    let invalid_http = run_puffer(
+        &workspace,
+        &puffer_home,
+        &[
+            "mcp",
+            "add",
+            "invalid-http",
+            "not-a-url",
+            "--transport",
+            "http",
+        ],
+    );
+    assert!(!invalid_http.status.success(), "{invalid_http:?}");
+    let invalid_http_text = String::from_utf8_lossy(&invalid_http.stderr);
+    assert!(
+        invalid_http_text.contains("http MCP servers require an absolute http(s) endpoint URL"),
+        "{invalid_http_text}"
+    );
+    assert!(!workspace
+        .join(".puffer/resources/mcp_servers/invalid-http.yaml")
+        .exists());
+
+    let invalid_sse = run_puffer(
+        &workspace,
+        &puffer_home,
+        &[
+            "mcp",
+            "add",
+            "invalid-sse",
+            "file:///tmp/socket",
+            "--transport",
+            "sse",
+        ],
+    );
+    assert!(!invalid_sse.status.success(), "{invalid_sse:?}");
+    let invalid_sse_text = String::from_utf8_lossy(&invalid_sse.stderr);
+    assert!(
+        invalid_sse_text.contains("sse MCP servers require an absolute http(s) endpoint URL"),
+        "{invalid_sse_text}"
+    );
+    assert!(!workspace
+        .join(".puffer/resources/mcp_servers/invalid-sse.yaml")
+        .exists());
+
     let empty_json = run_puffer(
         &workspace,
         &puffer_home,

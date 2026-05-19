@@ -15,6 +15,7 @@ use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use url::Url;
 
 const DISABLED_PLUGIN_PLACEHOLDER_PREFIX: &str =
     "Disabled plugin placeholder created by `puffer plugin disable`.";
@@ -1098,8 +1099,20 @@ fn validate_mcp_target(transport: &str, endpoint: &str, target: &str) -> Result<
         "sse" | "http" if endpoint.trim().is_empty() => {
             anyhow::bail!("{transport} MCP servers require a non-empty endpoint URL")
         }
+        "sse" | "http" => validate_mcp_endpoint_url(transport, endpoint),
         _ => Ok(()),
     }
+}
+
+fn validate_mcp_endpoint_url(transport: &str, endpoint: &str) -> Result<()> {
+    let trimmed = endpoint.trim();
+    let Ok(url) = Url::parse(trimmed) else {
+        anyhow::bail!("{transport} MCP servers require an absolute http(s) endpoint URL")
+    };
+    if !matches!(url.scheme(), "http" | "https") || url.host_str().is_none() {
+        anyhow::bail!("{transport} MCP servers require an absolute http(s) endpoint URL");
+    }
+    Ok(())
 }
 
 fn source_kind_label(kind: SourceKind) -> &'static str {
