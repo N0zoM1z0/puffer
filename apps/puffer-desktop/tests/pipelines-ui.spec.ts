@@ -168,3 +168,76 @@ test("tools field preserves invalid and quoted input while validating", async ({
   await inspector.getByRole("button", { name: "Claude Code" }).click();
   await expect(tools).toHaveValue('"read,edit", bash');
 });
+
+test("refresh preserves the selected workflow node when it still exists", async ({ page }) => {
+  const workflows = [
+    {
+      schema: "puffer.workflow.v1",
+      slug: "first-flow",
+      enabled: true,
+      trigger: { type: "subscription", source_topic: "first.topic", pattern: "*" },
+      pipeline: {
+        name: "First flow",
+        working_dir: "/tmp/puffer-workspace",
+        concurrency: 1,
+        nodes: [
+          {
+            id: "first-implement",
+            type: "codex",
+            agent: "First implementer",
+            model: "gpt-5",
+            tools: ["read"],
+            prompt: "Implement first."
+          }
+        ]
+      }
+    },
+    {
+      schema: "puffer.workflow.v1",
+      slug: "second-flow",
+      enabled: true,
+      trigger: { type: "subscription", source_topic: "second.topic", pattern: "*" },
+      pipeline: {
+        name: "Second flow",
+        working_dir: "/tmp/puffer-workspace",
+        concurrency: 1,
+        nodes: [
+          {
+            id: "second-implement",
+            type: "codex",
+            agent: "Second implementer",
+            model: "gpt-5",
+            tools: ["read"],
+            prompt: "Implement second."
+          },
+          {
+            id: "second-review",
+            type: "claude",
+            agent: "Second reviewer",
+            model: "claude-sonnet-4-5",
+            tools: ["read"],
+            depends_on: ["second-implement"],
+            prompt: "Review second."
+          }
+        ]
+      }
+    }
+  ];
+  const daemon = new FakeDaemon({ workspaceRoot: "/tmp/puffer-workspace", workflows });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: "Pipelines" }).click();
+  await daemon.waitForRequest("workflow_list");
+  await page.getByRole("button", { name: /second-flow/ }).click();
+  await page.locator(".pf-pipe-graph").getByRole("button", { name: /Second reviewer/ }).click();
+  await expect(page.locator(".pf-editor-inspector").getByLabel("Agent name")).toHaveValue("Second reviewer");
+
+  const workflowRequests = daemon.requests.filter((request) => request.method === "workflow_list").length;
+  await page.locator(".pf-pipe-top-right").getByRole("button", { name: "Refresh" }).click();
+  await expect.poll(() =>
+    daemon.requests.filter((request) => request.method === "workflow_list").length
+  ).toBe(workflowRequests + 1);
+
+  await expect(page.locator(".pf-editor-inspector").getByLabel("Agent name")).toHaveValue("Second reviewer");
+});

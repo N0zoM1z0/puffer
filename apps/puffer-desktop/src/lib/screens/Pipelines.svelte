@@ -368,7 +368,10 @@
       if (!workflowSlug || !editorWorkflows.some((item) => item.slug === workflowSlug)) {
         workflowSlug = editorWorkflows[0]?.slug ?? "agent-review-pipeline";
       }
-      selectedNodeId = editorWorkflows[0]?.pipeline.nodes[0]?.id ?? null;
+      const activeWorkflow = editorWorkflows.find((item) => item.slug === workflowSlug) ?? editorWorkflows[0];
+      if (!activeWorkflow?.pipeline.nodes.some((node) => node.id === selectedNodeId)) {
+        selectedNodeId = activeWorkflow?.pipeline.nodes[0]?.id ?? null;
+      }
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
       usingStarterDraft = true;
