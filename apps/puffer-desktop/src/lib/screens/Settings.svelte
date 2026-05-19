@@ -300,7 +300,14 @@
   }
 
   async function loadModelsForProvider(providerId: string) {
-    if (!providerId || providerModels[providerId] || modelLoadingByProvider[providerId]) return;
+    if (!providerId || modelLoadingByProvider[providerId]) return;
+    const cached = providerModels[providerId];
+    if (cached) {
+      if (modelPickerProvider === providerId && !modelPickerModel) {
+        modelPickerModel = (cached.find((model) => model.isDefault) ?? cached[0])?.id ?? "";
+      }
+      return;
+    }
     modelLoadingByProvider = { ...modelLoadingByProvider, [providerId]: true };
     modelError = null;
     try {
@@ -310,7 +317,9 @@
         modelPickerModel = (models.find((model) => model.isDefault) ?? models[0])?.id ?? "";
       }
     } catch (e) {
-      modelError = (e as Error).message ?? String(e);
+      if (modelPickerProvider === providerId) {
+        modelError = (e as Error).message ?? String(e);
+      }
     } finally {
       modelLoadingByProvider = { ...modelLoadingByProvider, [providerId]: false };
     }

@@ -35,6 +35,38 @@ test("default model cannot be saved before provider models load", async ({ page 
   });
 });
 
+test("default model ignores stale provider model failures", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  daemon.delayResponse(
+    "list_provider_models",
+    (request) => request.params.providerId === "anthropic",
+    180
+  );
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Providers" }).click();
+
+  const pane = page.locator(".pf-settings-pane");
+  const providerSelect = pane.getByLabel("Provider");
+  const modelSelect = pane.getByLabel("Model");
+
+  daemon.failNext("list_provider_models", "anthropic models failed");
+  await providerSelect.selectOption("anthropic");
+  await daemon.waitForRequest(
+    "list_provider_models",
+    (request) => request.params.providerId === "anthropic"
+  );
+  await providerSelect.selectOption("codex");
+  await expect(modelSelect).toBeEnabled();
+  await page.waitForTimeout(230);
+
+  await expect(providerSelect).toHaveValue("codex");
+  await expect(pane.getByText("anthropic models failed")).toHaveCount(0);
+  await expect(pane.getByRole("button", { name: "Save default" })).toBeEnabled();
+});
+
 test("default model controls are locked while saving", async ({ page }) => {
   const daemon = new FakeDaemon();
   daemon.delayResponse("update_config", () => true, 3_000);
