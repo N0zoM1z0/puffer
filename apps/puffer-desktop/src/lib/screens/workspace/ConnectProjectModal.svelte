@@ -8,6 +8,7 @@
     type DirEntry
   } from "../../api/desktop";
   import { canInvokeTauri, currentDaemonClient, switchDaemonClient } from "../../api/daemonClient";
+  import { trapModalFocus } from "../../focusTrap";
   import {
     canonicalDaemonProviderId,
     providerIdInSet,
@@ -341,7 +342,8 @@
     aria-label="Connect project"
     aria-modal="true"
     tabindex="-1"
-    onkeydown={() => {}}
+    use:trapModalFocus={{ onClose, closeDisabled: busy }}
+    onkeydown={(event) => event.stopPropagation()}
   >
     <div class="pf-modal-head">
       <div class="pf-modal-title-group">
@@ -423,6 +425,7 @@
                 placeholder={defaultLocalPath}
                 spellcheck="false"
                 disabled={busy}
+                data-modal-initial-focus="true"
               />
             </div>
             <button

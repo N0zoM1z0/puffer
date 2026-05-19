@@ -5,6 +5,7 @@
     providerIdInSet,
     providerIdsEquivalent
   } from "../../providerIds";
+  import { trapModalFocus } from "../../focusTrap";
   import type { ProviderSummary, SettingsSnapshot } from "../../types";
 
   type Props = {
@@ -105,7 +106,8 @@
     aria-label="New agent"
     aria-modal="true"
     tabindex="-1"
-    onkeydown={() => {}}
+    use:trapModalFocus={{ onClose, closeDisabled: busy }}
+    onkeydown={(event) => event.stopPropagation()}
   >
     <div class="pf-modal-head">
       <div class="pf-modal-title-group">
@@ -124,6 +126,7 @@
             type="button"
             class="pf-provider-choice-btn"
             data-active={selectedProvider === provider.id}
+            data-modal-initial-focus={selectedProvider === provider.id ? "true" : undefined}
             role="radio"
             aria-checked={selectedProvider === provider.id}
             onclick={() => (selectedProvider = provider.id)}

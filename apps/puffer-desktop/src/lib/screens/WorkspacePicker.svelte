@@ -11,6 +11,7 @@
   import Icon from "../design/Icon.svelte";
   import { connectSshDaemon, restartLocalDaemon } from "../api/desktop";
   import { canInvokeTauri, currentDaemonClient } from "../api/daemonClient";
+  import { trapModalFocus } from "../focusTrap";
 
   type Props = {
     onClose: () => void;
@@ -114,7 +115,8 @@
     aria-label="Switch workspace"
     aria-modal="true"
     tabindex="-1"
-    onkeydown={() => {}}
+    use:trapModalFocus={{ onClose, closeDisabled: busy }}
+    onkeydown={(event) => event.stopPropagation()}
   >
     <div class="pf-modal-head">
       <div class="pf-modal-title-group">
@@ -133,6 +135,7 @@
         aria-selected={mode === "current"}
         class="pf-modal-seg-btn"
         data-active={mode === "current"}
+        data-modal-initial-focus={mode === "current" ? "true" : undefined}
         onclick={() => (mode = "current")}
         disabled={busy}
       >

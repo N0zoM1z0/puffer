@@ -189,6 +189,25 @@ test("project memory edit control is disabled until file editing is wired", asyn
   await expect(memoryDetail.locator(".path")).not.toContainText(".puffer/memory");
 });
 
+test("workspace picker moves focus into the dialog and restores the opener", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  await daemon.install(page);
+  await daemon.open(page);
+
+  const trigger = page.locator(".pf-pw-sub-btn");
+  await trigger.focus();
+  await trigger.click();
+
+  const dialog = page.getByRole("dialog", { name: "Switch workspace" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("tab", { name: /Current/ })).toBeFocused();
+
+  await page.keyboard.press("Escape");
+
+  await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
+});
+
 test("workspace ignores stale grouped session refresh responses", async ({ page }) => {
   const daemon = new FakeDaemon({
     sessions: [

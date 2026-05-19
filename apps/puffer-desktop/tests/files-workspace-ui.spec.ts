@@ -299,13 +299,21 @@ test("New agent modal closes with Escape", async ({ page }) => {
   await daemon.install(page);
   await daemon.open(page);
 
-  await page.getByRole("button", { name: "New agent in puffer" }).click();
+  const trigger = page.getByRole("button", { name: "New agent in puffer" });
+  await trigger.focus();
+  await trigger.click();
   const dialog = page.getByRole("dialog", { name: "New agent" });
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("radio", { name: /Codex/ })).toBeFocused();
+
+  await dialog.getByRole("button", { name: "Close" }).focus();
+  await page.keyboard.press("Shift+Tab");
+  await expect(dialog.getByRole("button", { name: "Start agent" })).toBeFocused();
 
   await page.keyboard.press("Escape");
 
   await expect(dialog).toHaveCount(0);
+  await expect(trigger).toBeFocused();
 });
 
 test("new agent provider choice is used for the first turn", async ({ page }) => {
@@ -398,9 +406,12 @@ test("connect project provider choice includes Anthropic", async ({ page }) => {
   await daemon.install(page);
   await daemon.open(page);
 
-  await page.getByRole("button", { name: "Connect project" }).click();
+  const trigger = page.getByRole("button", { name: "Connect project" });
+  await trigger.focus();
+  await trigger.click();
   const dialog = page.getByRole("dialog", { name: "Connect project" });
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel("Directory")).toBeFocused();
 
   await expect(dialog.getByRole("radio", { name: "Anthropic" })).toBeVisible();
   await dialog.getByRole("radio", { name: "Anthropic" }).click();
