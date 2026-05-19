@@ -1152,6 +1152,69 @@ test("model picker ignores stale provider selection responses", async ({ page })
   });
 });
 
+test("Codex chat imports local credential before first turn", async ({ page }) => {
+  const daemon = new FakeDaemon({
+    auth: [
+      {
+        providerId: "anthropic",
+        kind: "api_key",
+        email: null,
+        expiresAtMs: null,
+        scopes: [],
+        planType: null,
+        organizationName: null
+      }
+    ],
+    externalCredentials: [
+      {
+        providerId: "openai",
+        source: "codex",
+        kind: "oauth",
+        description: "Import Codex OAuth",
+        sourcePath: "/home/test/.codex/auth.json"
+      }
+    ],
+    providerModels: {
+      openai: [
+        {
+          id: "gpt-5",
+          displayName: "GPT-5",
+          provider: "openai",
+          api: "openai-responses",
+          contextWindow: 128000,
+          maxOutputTokens: 4096,
+          supportsReasoning: false,
+          thinkingOptions: [],
+          defaultThinkingOptionId: null,
+          isDefault: true
+        }
+      ]
+    }
+  });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openSession(page, /Browser regression/);
+  const composer = page.locator(".pf-composer textarea");
+  await expect(composer).toBeEnabled();
+  await composer.fill("Use my local Codex login");
+  await page.getByRole("button", { name: "Send" }).click();
+
+  const importRequest = await daemon.waitForRequest("import_external_credential");
+  expect(importRequest.params).toMatchObject({
+    providerId: "openai",
+    source: "codex"
+  });
+  const turnRequest = await daemon.waitForRequest(
+    "run_agent_turn",
+    (request) => request.params.message === "Use my local Codex login"
+  );
+  expect(turnRequest.params).toMatchObject({
+    providerId: "openai",
+    modelId: "test-model"
+  });
+});
+
 
 for (const scenario of [
   {

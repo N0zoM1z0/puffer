@@ -14,6 +14,7 @@
     SessionDetail,
     SessionListItem,
     SettingsSnapshot,
+    ExternalCredential,
     TimelineItem,
     UserQuestionTimelineItem
   } from "../../types";
@@ -35,6 +36,7 @@
     turnThinking?: boolean;
     turnStatusHint?: string | null;
     settingsSnapshot?: SettingsSnapshot | null;
+    externalCredentials?: ExternalCredential[];
     userDisplayName?: string;
     onBack: () => void;
     onSubmitMessage: (message: string, options?: AgentTurnOptions) => SubmitMessageResult;
@@ -62,6 +64,7 @@
     turnThinking = false,
     turnStatusHint = null,
     settingsSnapshot = null,
+    externalCredentials = [],
     userDisplayName = "Otter",
     onBack,
     onSubmitMessage,
@@ -527,6 +530,7 @@
         {turnThinking}
         {turnStatusHint}
         {settingsSnapshot}
+        {externalCredentials}
         {userDisplayName}
         {onSubmitMessage}
         {onResolvePermission}
@@ -576,6 +580,7 @@
           {turnThinking}
           {turnStatusHint}
           {settingsSnapshot}
+          {externalCredentials}
           {userDisplayName}
           {onSubmitMessage}
           {onResolvePermission}

@@ -14,6 +14,7 @@
     PermissionTimelineItem,
     SessionListItem,
     SettingsSnapshot,
+    ExternalCredential,
     TimelineItem,
     ToolTimelineItem,
     DiffTimelineItem,
@@ -53,6 +54,7 @@
     turnThinking?: boolean;
     turnStatusHint?: string | null;
     settingsSnapshot?: SettingsSnapshot | null;
+    externalCredentials?: ExternalCredential[];
     onSubmitMessage: (message: string, options?: AgentTurnOptions) => SubmitMessageResult;
     onResolvePermission: (permissionId: string, choice: string) => void;
     onResolveUserQuestion: (
@@ -79,6 +81,7 @@
     turnThinking = false,
     turnStatusHint = null,
     settingsSnapshot = null,
+    externalCredentials = [],
     onSubmitMessage,
     onResolvePermission,
     onResolveUserQuestion,
@@ -124,18 +127,25 @@
   );
   let allowProviderSwitch = $derived(Boolean(session) && !conversationStarted && !turnRunning);
   let authenticatedProviderIds = $derived((settingsSnapshot?.auth ?? []).map((entry) => entry.providerId));
+  let importableProviderIds = $derived(externalCredentials.map((entry) => entry.providerId));
   let selectedProviderAuthenticated = $derived(
     settingsSnapshot === null ||
       !selectedProviderId ||
       providerIdInSet(selectedProviderId, authenticatedProviderIds)
   );
+  let selectedProviderImportable = $derived(
+    Boolean(selectedProviderId) && providerIdInSet(selectedProviderId, importableProviderIds)
+  );
+  let selectedProviderAvailable = $derived(
+    selectedProviderAuthenticated || selectedProviderImportable
+  );
   let composerBlockedReason = $derived(
-    selectedProviderAuthenticated
+    selectedProviderAvailable
       ? null
       : `Reconnect ${providerDisplayName(selectedProviderId)} to continue this session.`
   );
   let canSubmitPrompt = $derived(
-    Boolean(draft.trim() && session && !turnRunning && !submitInFlight && selectedProviderAuthenticated)
+    Boolean(draft.trim() && session && !turnRunning && !submitInFlight && selectedProviderAvailable)
   );
 
   function modelSupportsFastMode(modelId: string | null | undefined): boolean {
@@ -1317,7 +1327,7 @@
         bind:value={draft}
         placeholder={session ? `Reply to ${engineerName}…` : "Select a session to continue"}
         onkeydown={onKeydown}
-        disabled={!session || !selectedProviderAuthenticated}
+        disabled={!session || !selectedProviderAvailable}
       ></textarea>
       <div class="pf-composer-foot">
         <ModelPicker
@@ -1325,7 +1335,7 @@
           currentProvider={selectedProviderId}
           currentModel={selectedModelId}
           allowProviderSwitch={allowProviderSwitch}
-          disabled={turnRunning || !selectedProviderAuthenticated}
+          disabled={turnRunning || !selectedProviderAvailable}
           onChange={pickModel}
         />
         <label class="pf-toggle-chip" class:disabled={!fastModeAvailable} title={fastModeAvailable ? "Fast mode" : "Fast mode is not available for this model"}>

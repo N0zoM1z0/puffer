@@ -62,7 +62,7 @@
     type ConnectionState
   } from "./lib/api/daemonClient";
   import { sessionDisplayName, sessionDisplayTitle } from "./lib/sessionDisplay";
-  import { providerIdInSet } from "./lib/providerIds";
+  import { providerIdInSet, providerIdsEquivalent } from "./lib/providerIds";
   import type { UnlistenFn } from "@tauri-apps/api/event";
   import type {
     DesktopPreferences,
@@ -1070,6 +1070,38 @@
     );
   }
 
+  function importableCredentialForProvider(
+    providerId: string | null | undefined
+  ): ExternalCredential | null {
+    if (!providerId) return null;
+    return (
+      externalCredentials.find((candidate) => providerIdsEquivalent(providerId, candidate.providerId)) ??
+      null
+    );
+  }
+
+  async function importCredentialForTurn(candidate: ExternalCredential): Promise<boolean> {
+    if (importBusyKey) return false;
+    importBusyKey = `${candidate.providerId}::${candidate.source}`;
+    authError = null;
+    try {
+      statusMessage = `Importing ${candidate.source} credential into ${candidate.providerId}.`;
+      settingsSnapshot = await importExternalCredential(candidate.providerId, candidate.source);
+      void listExternalCredentials()
+        .then((found) => {
+          externalCredentials = found;
+        })
+        .catch(() => {});
+      return true;
+    } catch (error) {
+      authError = String(error);
+      statusMessage = String(error);
+      return false;
+    } finally {
+      importBusyKey = null;
+    }
+  }
+
   async function submitMessage(message: string, options: AgentTurnOptions = {}) {
     if (!selectedSession) {
       statusMessage = "Select a session to send a message.";
@@ -1084,10 +1116,21 @@
     const requestedProviderId =
       options.providerId ?? selectedSession.providerId ?? settingsSnapshot?.config.defaultProvider;
     if (!providerIsAuthenticated(requestedProviderId)) {
-      const detail = `Reconnect ${requestedProviderId} before continuing this session.`;
-      statusMessage = detail;
-      appendAgentError("Provider disconnected", detail, "provider-auth");
-      return false;
+      const importable = importableCredentialForProvider(requestedProviderId);
+      if (importable) {
+        const imported = await importCredentialForTurn(importable);
+        if (!imported || !providerIsAuthenticated(requestedProviderId)) {
+          const detail = `Reconnect ${requestedProviderId} before continuing this session.`;
+          statusMessage = detail;
+          appendAgentError("Provider disconnected", detail, "provider-auth");
+          return false;
+        }
+      } else {
+        const detail = `Reconnect ${requestedProviderId} before continuing this session.`;
+        statusMessage = detail;
+        appendAgentError("Provider disconnected", detail, "provider-auth");
+        return false;
+      }
     }
     const now = Date.now();
     turnStartedAtMs = now;
@@ -1676,6 +1719,7 @@
                 turnThinking={turnThinking}
                 turnStatusHint={turnStatusHint}
                 settingsSnapshot={settingsSnapshot}
+                {externalCredentials}
                 userDisplayName={tweaks.userName}
                 onBack={onCloseAgent}
                 onSubmitMessage={submitMessage}
