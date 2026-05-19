@@ -1153,6 +1153,14 @@ test("model picker ignores stale provider selection responses", async ({ page })
 });
 
 test("Codex chat imports local credential before first turn", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "__TAURI_INTERNALS__", {
+      configurable: true,
+      value: {
+        invoke: (command: string) => Promise.reject(new Error(`unexpected tauri invoke: ${command}`))
+      }
+    });
+  });
   const daemon = new FakeDaemon({
     auth: [
       {

@@ -614,11 +614,15 @@ export async function mergePullRequest(
 }
 
 export async function loadSettingsSnapshot(remote?: RemoteConnection): Promise<SettingsSnapshot> {
-  if (!canInvokeTauri()) {
-    if (canReachDaemon()) {
+  if (canReachDaemon()) {
+    try {
       const client = await ensureLocalDaemonClient();
       return client.request<BackendSettingsSnapshot>("load_settings_snapshot");
+    } catch (error) {
+      if (!canInvokeTauri()) throw error;
     }
+  }
+  if (!canInvokeTauri()) {
     return mockSettingsSnapshot;
   }
   return invoke<BackendSettingsSnapshot>("load_settings_snapshot", remoteArgs(remote));
@@ -670,11 +674,15 @@ export async function loginWithApiKey(
  *  shell surfaces these so the user does not have to paste an API key they
  *  already have on disk. */
 export async function listExternalCredentials(): Promise<ExternalCredential[]> {
-  if (!canInvokeTauri()) {
-    if (canReachDaemon()) {
+  if (canReachDaemon()) {
+    try {
       const client = await ensureLocalDaemonClient();
       return client.request<ExternalCredential[]>("list_external_credentials");
+    } catch (error) {
+      if (!canInvokeTauri()) throw error;
     }
+  }
+  if (!canInvokeTauri()) {
     return [];
   }
   return invoke<ExternalCredential[]>("list_external_credentials");
@@ -686,14 +694,18 @@ export async function importExternalCredential(
   providerId: string,
   source: "claude" | "codex"
 ): Promise<SettingsSnapshot> {
-  if (!canInvokeTauri()) {
-    if (canReachDaemon()) {
+  if (canReachDaemon()) {
+    try {
       const client = await ensureLocalDaemonClient();
       return client.request<BackendSettingsSnapshot>("import_external_credential", {
         providerId,
         source
       });
+    } catch (error) {
+      if (!canInvokeTauri()) throw error;
     }
+  }
+  if (!canInvokeTauri()) {
     return mockSettingsSnapshot;
   }
   return invoke<BackendSettingsSnapshot>("import_external_credential", {
