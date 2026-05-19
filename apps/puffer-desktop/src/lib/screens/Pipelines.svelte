@@ -111,6 +111,7 @@
   let usingStarterDraft = $state(true);
   let localDraftHydrated = $state(false);
   let triggerDrafts = $state<Record<string, TriggerDraft>>({});
+  let toolInputDrafts = $state<Record<string, string>>({});
   let saveNotice = $state("Draft changes are local until workflow save lands in the daemon.");
 
   let workflows = $derived(editorWorkflows);
@@ -556,16 +557,60 @@
   }
 
   function toolsText(node: EditablePipelineNode): string {
+    if (toolInputDrafts[node.id] !== undefined) return toolInputDrafts[node.id];
     return (node.tools ?? []).join(", ");
   }
 
   function setTools(id: string, value: string) {
-    updateNode(id, {
-      tools: value
-        .split(",")
-        .map((part) => part.trim())
-        .filter(Boolean)
-    });
+    toolInputDrafts = { ...toolInputDrafts, [id]: value };
+    const parsed = parseToolsList(value);
+    if (!parsed.error) {
+      updateNode(id, { tools: parsed.tools });
+    }
+  }
+
+  function parseToolsList(value: string): { tools: string[]; error: string | null } {
+    const tools: string[] = [];
+    let current = "";
+    let quoted = false;
+    let justClosedQuote = false;
+    for (let i = 0; i < value.length; i += 1) {
+      const char = value[i];
+      if (char === '"') {
+        if (quoted) {
+          quoted = false;
+          justClosedQuote = true;
+          continue;
+        }
+        if (current.trim().length > 0) {
+          return { tools: [], error: "Quote must start a tool value." };
+        }
+        quoted = true;
+        continue;
+      }
+      if (char === "," && !quoted) {
+        const tool = current.trim();
+        if (!tool) return { tools: [], error: "Tool entries cannot be empty." };
+        tools.push(tool);
+        current = "";
+        justClosedQuote = false;
+        continue;
+      }
+      if (justClosedQuote && char.trim()) {
+        return { tools: [], error: "Quoted tool values must end before the comma." };
+      }
+      current += char;
+    }
+    if (quoted) return { tools: [], error: "Quoted tool value is not closed." };
+    const tail = current.trim();
+    if (!tail) {
+      return {
+        tools: [],
+        error: value.trim() ? "Tool entries cannot be empty." : null
+      };
+    }
+    tools.push(tail);
+    return { tools, error: null };
   }
 
   function uniqueNodeId(provider: AgentProvider): string {
@@ -619,7 +664,9 @@
   }
 
   function toolsFieldError(node: EditablePipelineNode): string | null {
-    return (node.tools ?? []).some((tool) => tool.trim()) ? null : "At least one tool is required.";
+    const parsed = parseToolsList(toolsText(node));
+    if (parsed.error) return parsed.error;
+    return parsed.tools.length > 0 ? null : "At least one tool is required.";
   }
 
   function workflowLatestRun(slug: string): WorkflowRun | undefined {

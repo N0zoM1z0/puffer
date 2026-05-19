@@ -145,3 +145,26 @@ test("required pipeline and agent fields show validation when cleared", async ({
 
   await expect(config.getByText("Cron is required.")).toBeVisible();
 });
+
+test("tools field preserves invalid and quoted input while validating", async ({ page }) => {
+  const daemon = new FakeDaemon({ workspaceRoot: "/tmp/puffer-workspace" });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: "Pipelines" }).click();
+  await daemon.waitForRequest("workflow_list");
+
+  const inspector = page.locator(".pf-editor-inspector");
+  const tools = inspector.getByLabel("Tools");
+
+  await tools.fill("read,,bash");
+  await expect(tools).toHaveValue("read,,bash");
+  await expect(inspector.getByText("Tool entries cannot be empty.")).toBeVisible();
+
+  await tools.fill('"read,edit", bash');
+  await expect(tools).toHaveValue('"read,edit", bash');
+  await expect(inspector.getByText("Tool entries cannot be empty.")).toBeHidden();
+
+  await inspector.getByRole("button", { name: "Claude Code" }).click();
+  await expect(tools).toHaveValue('"read,edit", bash');
+});
