@@ -416,6 +416,30 @@ test("failed permission responses keep the approval prompt retryable", async ({ 
   await expect(page.getByRole("button", { name: "Deny" })).toBeVisible();
 });
 
+test("permission approvals submit only once while resolution is pending", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  daemon.delayResponse("resolve_permission", () => true, 180);
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openSession(page, /^Browser regression\b/);
+  daemon.emit("session:session-browser:event", {
+    type: "permission-request",
+    turnId: "turn-permission",
+    requestId: "permission-1",
+    toolId: "bash",
+    summary: "Run shell command",
+    reason: "Needs workspace write access."
+  });
+
+  const allow = page.getByRole("button", { name: "Allow once" });
+  await expect(allow).toBeVisible();
+  await allow.dblclick();
+  await expect(page.getByRole("button", { name: "Sending..." })).toBeDisabled();
+  await page.waitForTimeout(60);
+  expect(daemon.requests.filter((request) => request.method === "resolve_permission")).toHaveLength(1);
+});
+
 test("failed question responses keep the question prompt retryable", async ({ page }) => {
   const daemon = new FakeDaemon();
   await daemon.install(page);

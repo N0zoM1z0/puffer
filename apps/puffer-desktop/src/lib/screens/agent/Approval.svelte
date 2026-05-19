@@ -4,16 +4,27 @@
 
   type Props = {
     item: PermissionTimelineItem;
-    onResolve: (permissionId: string, choice: string) => void;
+    onResolve: (permissionId: string, choice: string) => void | Promise<void>;
   };
 
   let { item, onResolve }: Props = $props();
+  let resolvingChoice = $state<string | null>(null);
 
   function variantFor(choice: string): "default" | "outline" | "ghost" {
     const n = choice.toLowerCase();
     if (n.includes("deny")) return "ghost";
     if (n.includes("always") || n.includes("session")) return "outline";
     return "default";
+  }
+
+  async function resolve(choice: string) {
+    if (resolvingChoice !== null) return;
+    resolvingChoice = choice;
+    try {
+      await onResolve(item.id, choice);
+    } finally {
+      resolvingChoice = null;
+    }
   }
 </script>
 
@@ -39,8 +50,9 @@
         class="sc-btn"
         data-variant={variantFor(choice)}
         data-size="sm"
-        onclick={() => onResolve(item.id, choice)}
-      >{choice}</button>
+        disabled={resolvingChoice !== null}
+        onclick={() => void resolve(choice)}
+      >{resolvingChoice === choice ? "Sending..." : choice}</button>
     {/each}
   </div>
 </div>
