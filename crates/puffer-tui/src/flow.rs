@@ -325,6 +325,7 @@ pub(crate) fn handle_prompt_submit(
             text: submitted.clone(),
         },
     )?;
+    let transcript_start_len = state.transcript.len();
 
     let mut worker_state = state.clone();
     let worker_resources = resources.clone();
@@ -433,6 +434,7 @@ pub(crate) fn handle_prompt_submit(
     tui.pending_submit = Some(PendingSubmit {
         prompt: submitted,
         receiver,
+        transcript_start_len,
         pending_tool_calls: Vec::new(),
         rendered_tool_invocations: 0,
         started_at: std::time::Instant::now(),
@@ -625,6 +627,7 @@ pub(crate) fn poll_pending_submit(
                         finalize_assistant_text(state, session_store, &turn.assistant_text)?;
                     }
                     Err(error) => {
+                        discard_pending_assistant_drafts(state, pending.transcript_start_len);
                         let message = format!("Provider request failed: {error}");
                         state.push_message(MessageRole::System, message.clone());
                         session_store.append_event(
@@ -995,6 +998,17 @@ fn finalize_assistant_text(
         },
     )?;
     Ok(())
+}
+
+fn discard_pending_assistant_drafts(state: &mut AppState, transcript_start_len: usize) {
+    let mut index = transcript_start_len.min(state.transcript.len());
+    while index < state.transcript.len() {
+        if state.transcript[index].role == MessageRole::Assistant {
+            state.transcript.remove(index);
+        } else {
+            index += 1;
+        }
+    }
 }
 
 fn submit_command_name(submitted: &str) -> &str {
