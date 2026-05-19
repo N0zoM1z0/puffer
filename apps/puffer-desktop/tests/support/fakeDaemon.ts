@@ -310,6 +310,25 @@ export class FakeDaemon {
     this.authStatuses = auth;
   }
 
+  setSessions(sessions: FakeDaemonSessionInput[]): void {
+    this.sessions.clear();
+    this.timelines.clear();
+    this.details.clear();
+    for (const input of sessions) {
+      const metadata = sessionMeta(input);
+      const sessionId = String(metadata.sessionId);
+      this.sessions.set(sessionId, metadata);
+      this.timelines.set(sessionId, input.timeline ?? defaultTimeline());
+      this.details.set(sessionId, {
+        latestDiff: input.latestDiff ?? null,
+        diffHistory: input.diffHistory ?? [],
+        repoStatus: input.repoStatus ?? null,
+        agentDiff: input.agentDiff ?? { files: [], entries: [] },
+        divergence: input.divergence ?? { agentOnly: [], gitOnly: [], agentTotal: 0, gitTotal: 0 }
+      });
+    }
+  }
+
   async install(page: Page): Promise<void> {
     const expectedUrl = new URL(this.url);
     await page.routeWebSocket((url) => {

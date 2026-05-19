@@ -145,6 +145,7 @@
   let daemonClientFingerprint = $state<string | null>(null);
   let daemonClientUnlisteners: Array<() => void> = [];
   let sessionLoadGeneration = 0;
+  let groupsRefreshGeneration = 0;
   let desktopPins = $state<DesktopPinState>({ pinnedAgentIds: [], pinnedWorkspacePaths: [] });
 
   let settingsSnapshot = $state<SettingsSnapshot | null>(null);
@@ -702,17 +703,21 @@
   }
 
   async function refreshGroups() {
+    const generation = ++groupsRefreshGeneration;
     groupsLoading = true;
     try {
-      groups = await listGroupedSessionsFromDaemon();
+      const nextGroups = await listGroupedSessionsFromDaemon();
+      if (generation !== groupsRefreshGeneration) return;
+      groups = nextGroups;
       statusMessage =
         groups.length === 0
           ? "No sessions in this workspace yet."
           : `${groups.length} project${groups.length === 1 ? "" : "s"} loaded.`;
     } catch (error) {
+      if (generation !== groupsRefreshGeneration) return;
       statusMessage = String(error);
     } finally {
-      groupsLoading = false;
+      if (generation === groupsRefreshGeneration) groupsLoading = false;
     }
   }
 
@@ -891,6 +896,7 @@
     turnStatusHint = null;
     settledTurnIds = new Set();
     sessionLoadGeneration += 1;
+    groupsRefreshGeneration += 1;
     if (sessionEventUnlisten) {
       sessionEventUnlisten();
       sessionEventUnlisten = null;

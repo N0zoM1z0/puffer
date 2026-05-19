@@ -119,3 +119,47 @@ test("project memory edit control is disabled until file editing is wired", asyn
   const memoryDetail = page.locator(".pf-pmem-detail");
   await expect(memoryDetail.getByRole("button", { name: "Edit" })).toBeDisabled();
 });
+
+test("workspace ignores stale grouped session refresh responses", async ({ page }) => {
+  const daemon = new FakeDaemon({
+    sessions: [
+      {
+        sessionId: "session-old",
+        displayName: "Old workspace session",
+        title: "Old workspace session",
+        cwd: "/tmp/puffer-old",
+        folderPath: "/tmp/puffer-old",
+        updatedAtMs: baseTime,
+        createdAtMs: baseTime - 60_000
+      }
+    ]
+  });
+  daemon.delayResponse("list_grouped_sessions", () => true, 220);
+  await daemon.install(page);
+  await daemon.open(page);
+  await daemon.waitForRequest("list_grouped_sessions");
+  const existingRequests = new Set(daemon.requests);
+
+  daemon.setSessions([
+    {
+      sessionId: "session-new",
+      displayName: "New workspace session",
+      title: "New workspace session",
+      cwd: "/tmp/puffer-new",
+      folderPath: "/tmp/puffer-new",
+      updatedAtMs: baseTime + 1_000,
+      createdAtMs: baseTime - 30_000
+    }
+  ]);
+  daemon.emit("workspace:sessions:changed", { sessionId: "session-new", reason: "created" });
+
+  await daemon.waitForRequest(
+    "list_grouped_sessions",
+    (request) => !existingRequests.has(request)
+  );
+  const workspace = page.locator(".pf-pw-list");
+  await expect(workspace.getByRole("button", { name: /^New workspace session\b/ })).toBeVisible();
+  await page.waitForTimeout(260);
+  await expect(workspace.getByRole("button", { name: /^New workspace session\b/ })).toBeVisible();
+  await expect(workspace.getByText("Old workspace session")).toHaveCount(0);
+});
