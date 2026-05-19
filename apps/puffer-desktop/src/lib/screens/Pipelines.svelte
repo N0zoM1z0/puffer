@@ -20,6 +20,10 @@
     pipeline: Omit<WorkflowDefinition["pipeline"], "nodes"> & { nodes: EditablePipelineNode[] };
   };
 
+  type Props = {
+    workspaceRoot?: string | null;
+  };
+
   type ProviderMeta = {
     id: AgentProvider;
     label: string;
@@ -81,6 +85,8 @@
   const PAD_L = 18;
   const PAD_T = 22;
 
+  let { workspaceRoot = "" }: Props = $props();
+
   let snapshot = $state<WorkflowSnapshot>({ workflows: [], runs: [] });
   let editorWorkflows = $state<EditableWorkflow[]>([starterWorkflow()]);
   let workflowSlug = $state("agent-review-pipeline");
@@ -89,6 +95,7 @@
   let stepIdx = $state<number | null>(null);
   let loading = $state(true);
   let error = $state<string | null>(null);
+  let usingStarterDraft = $state(true);
   let saveNotice = $state("Draft changes are local until workflow save lands in the daemon.");
 
   let workflows = $derived(editorWorkflows);
@@ -125,7 +132,7 @@
       trigger: { type: "subscription", source_topic: "workspace.task.created", pattern: "review|implement|ship" },
       pipeline: {
         name: "Agent review pipeline",
-        working_dir: "/Users/shou/corbina",
+        working_dir: starterWorkingDir(),
         concurrency: 1,
         nodes: [
           {
@@ -157,6 +164,10 @@
         ]
       }
     };
+  }
+
+  function starterWorkingDir(): string {
+    return workspaceRoot?.trim() || "";
   }
 
   function editableFromWorkflow(item: WorkflowDefinition): EditableWorkflow {
@@ -238,6 +249,22 @@
     setTimeout(measure, 0);
   });
 
+  $effect(() => {
+    const workingDir = starterWorkingDir();
+    if (!usingStarterDraft || !workingDir) return;
+    editorWorkflows = editorWorkflows.map((item) => {
+      if (item.slug !== "agent-review-pipeline") return item;
+      if (item.pipeline.working_dir && item.pipeline.working_dir !== "/Users/shou/corbina") return item;
+      return {
+        ...item,
+        pipeline: {
+          ...item.pipeline,
+          working_dir: workingDir
+        }
+      };
+    });
+  });
+
   async function refresh() {
     loading = true;
     error = null;
@@ -247,6 +274,7 @@
         workflows: next.workflows,
         runs: [...next.runs].sort((a, b) => b.idx - a.idx)
       };
+      usingStarterDraft = next.workflows.length === 0;
       editorWorkflows = next.workflows.length > 0 ? next.workflows.map(editableFromWorkflow) : [starterWorkflow()];
       if (!workflowSlug || !editorWorkflows.some((item) => item.slug === workflowSlug)) {
         workflowSlug = editorWorkflows[0]?.slug ?? "agent-review-pipeline";
@@ -254,6 +282,7 @@
       selectedNodeId = editorWorkflows[0]?.pipeline.nodes[0]?.id ?? null;
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
+      usingStarterDraft = true;
       editorWorkflows = [starterWorkflow()];
       workflowSlug = editorWorkflows[0].slug;
       selectedNodeId = editorWorkflows[0].pipeline.nodes[0]?.id ?? null;

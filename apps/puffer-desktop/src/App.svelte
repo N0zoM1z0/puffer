@@ -1709,7 +1709,7 @@
               />
             {/if}
           {:else if tweaks.screen === "pipelines"}
-            <Pipelines />
+            <Pipelines workspaceRoot={workspaceIdentity()} />
           {:else if tweaks.screen === "deployments"}
             <Deployments />
           {:else if tweaks.screen === "settings"}

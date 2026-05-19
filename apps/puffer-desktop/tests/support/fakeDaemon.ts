@@ -41,6 +41,11 @@ type SessionDetailOverrides = {
   divergence: JsonRecord;
 };
 
+type WorkflowSnapshotFixture = {
+  workflows: JsonRecord[];
+  runs: JsonRecord[];
+};
+
 export type FakeDaemonSessionInput = {
   sessionId: string;
   displayName?: string | null;
@@ -221,6 +226,7 @@ export class FakeDaemon {
   private readonly files = new Map<string, string>();
   private readonly providerModels: Record<string, JsonRecord[]>;
   private readonly providerSummaries: JsonRecord[] | null;
+  private readonly workflowSnapshot: WorkflowSnapshotFixture;
   private workspaceRoot = "/tmp/puffer";
   private authStatuses: JsonRecord[];
   private settingsConfig: { defaultProvider: string | null; defaultModel: string | null } = {
@@ -253,6 +259,8 @@ export class FakeDaemon {
     providerModels?: Record<string, JsonRecord[]>;
     providers?: JsonRecord[];
     mcpServers?: JsonRecord[];
+    workflows?: JsonRecord[];
+    workflowRuns?: JsonRecord[];
     protocol?: "legacy" | "real";
     workspaceRoot?: string;
     auth?: JsonRecord[];
@@ -283,6 +291,10 @@ export class FakeDaemon {
     this.providerModels = options.providerModels ?? {};
     this.providerSummaries = options.providers ?? null;
     this.mcpServers = options.mcpServers ?? this.mcpServers;
+    this.workflowSnapshot = {
+      workflows: options.workflows ?? [],
+      runs: options.workflowRuns ?? []
+    };
   }
 
   setWorkspaceRoot(workspaceRoot: string): void {
@@ -566,6 +578,8 @@ export class FakeDaemon {
         return {};
       case "browser_recording":
         return { frames: [] };
+      case "workflow_list":
+        return this.workflowSnapshot;
       case "list_dir":
         return this.listDir(request.params);
       case "load_file_tabs":
