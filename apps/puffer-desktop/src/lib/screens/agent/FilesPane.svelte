@@ -622,10 +622,12 @@
     if (!target || !dirty || saving) return;
     saving = true;
     saveError = null;
+    const submittedContent = draftContent;
     try {
-      const result = await writeFile(target, draftContent);
+      const result = await writeFile(target, submittedContent);
       if (activePath === target) {
-        cacheFileResult(result, true);
+        const latestDraft = draftCache.get(target);
+        cacheFileResult(result, latestDraft == null || latestDraft === submittedContent);
         pinTab(target);
         clearLspState();
       }

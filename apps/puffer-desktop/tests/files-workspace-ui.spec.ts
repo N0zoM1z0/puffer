@@ -148,6 +148,38 @@ test("Files tab keeps dirty edits visible after save failure", async ({ page }) 
   await expect(editor).toHaveValue(draft);
 });
 
+test("Files tab preserves newer edits when a save response is late", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  daemon.delayResponse(
+    "write_file",
+    (request) => request.params.path === "/tmp/puffer/src/main.rs",
+    220
+  );
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openRegressionAgent(page);
+  await openFilesPanel(page);
+
+  const editor = page.getByLabel("Edit file contents");
+  await expect(editor).toHaveValue("fn main() {}\n");
+
+  const firstSave = "fn main() {\n    println!(\"first save\");\n}\n";
+  const laterDraft = "fn main() {\n    println!(\"second unsaved edit\");\n}\n";
+  await editor.fill(firstSave);
+  await page.getByRole("button", { name: "Save" }).click();
+  await daemon.waitForRequest(
+    "write_file",
+    (candidate) => candidate.params.path === "/tmp/puffer/src/main.rs"
+  );
+
+  await editor.fill(laterDraft);
+
+  await expect(page.getByRole("button", { name: "Save" })).toBeEnabled();
+  await expect(editor).toHaveValue(laterDraft);
+  await expect(page.locator(".file-tab.active .dirty-dot")).toBeVisible();
+});
+
 test("Files tab clears saving state after switching tabs during save", async ({ page }) => {
   const daemon = new FakeDaemon();
   daemon.delayResponse(
