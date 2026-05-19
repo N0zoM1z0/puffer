@@ -525,8 +525,7 @@
     ctx.clearRect(0, 0, canvas.width, canvas.height);
   }
 
-  async function submitUrl(event: SubmitEvent) {
-    event.preventDefault();
+  async function submitUrl() {
     if (!connected || !activeTabId) return;
     const tabId = activeTabId;
     const targetUrl = urlDraft;
@@ -557,6 +556,12 @@
     if (url && url !== "about:blank") {
       window.open(url, "_blank", "noopener,noreferrer");
     }
+  }
+
+  function handleAddressKeydown(event: KeyboardEvent) {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    void submitUrl();
   }
 
   function navigateHistory(direction: "back" | "forward") {
@@ -1034,7 +1039,7 @@
       <Icon name="plus" size={13} />
     </button>
   </div>
-  <form class="pf-browser-toolbar" onsubmit={submitUrl}>
+  <div class="pf-browser-toolbar">
     <button
       class="pf-browser-icon"
       type="button"
@@ -1069,6 +1074,7 @@
       disabled={!browserControlsEnabled}
       bind:this={addressInput}
       bind:value={urlDraft}
+      onkeydown={handleAddressKeydown}
     />
     <button
       class="pf-browser-icon"
@@ -1084,7 +1090,7 @@
       <Icon name="external" size={14} />
     </button>
     <span class="pf-browser-status" class:loading>{status}</span>
-  </form>
+  </div>
   {#if error}
     <div class="pf-browser-error">{error}</div>
   {/if}

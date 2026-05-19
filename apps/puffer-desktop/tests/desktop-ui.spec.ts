@@ -97,6 +97,27 @@ test("sends Browser tab navigation through the daemon bridge", async ({ page }) 
   await expect(page.getByLabel("URL")).toHaveValue("https://example.com");
 });
 
+test("Browser address Enter does not submit a page-level form", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openRegressionAgent(page);
+  await openAgentPanel(page, "Browser");
+  await daemon.waitForRequest("browser_open");
+
+  await expect(page.locator("form.pf-browser-toolbar")).toHaveCount(0);
+  await page.getByLabel("URL").fill("https://example.com");
+  await page.getByLabel("URL").press("Enter");
+
+  await daemon.waitForRequest("browser_navigate", (request) =>
+    request.params.sessionId === "session-browser:browser:tab-1" &&
+    request.params.url === "https://example.com"
+  );
+  await expect(page.locator(".pf-browser-pane")).toBeVisible();
+  await expect(page.getByLabel("URL")).toHaveValue("https://example.com");
+});
+
 test("renders Browser devtools events from the daemon stream", async ({ page }) => {
   const daemon = new FakeDaemon();
   await daemon.install(page);
