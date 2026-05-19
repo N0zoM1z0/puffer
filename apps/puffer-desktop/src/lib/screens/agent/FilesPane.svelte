@@ -55,6 +55,7 @@
   let activeError = $state<string | null>(null);
   let draftContent = $state("");
   let savingPaths = $state<Set<string>>(new Set());
+  let saveErrorsByPath = $state<Map<string, string>>(new Map());
   let saveError = $state<string | null>(null);
   let selectedSymbol = $state<string | null>(null);
   let lspLoading = $state(false);
@@ -98,6 +99,7 @@
       activeSize = 0;
       draftContent = "";
       savingPaths = new Set();
+      saveErrorsByPath = new Map();
       saveError = null;
       clearLspState();
       void loadDir(next);
@@ -410,6 +412,19 @@
     draftCache = next;
   }
 
+  function setSaveErrorForPath(path: string, message: string | null) {
+    const next = new Map(saveErrorsByPath);
+    if (message) {
+      next.set(path, message);
+    } else {
+      next.delete(path);
+    }
+    saveErrorsByPath = next;
+    if (activePath === path) {
+      saveError = message;
+    }
+  }
+
   function setDraft(content: string) {
     draftContent = content;
     if (!activePath) return;
@@ -506,7 +521,7 @@
     activePath = path;
     activeSize = size ?? openTabs.find((tab) => tab.path === path)?.size ?? 0;
     activeError = null;
-    saveError = null;
+    saveError = saveErrorsByPath.get(path) ?? null;
     clearLspState();
 
     const cached = fileCache.get(path);
@@ -551,6 +566,9 @@
     const nextDrafts = new Map(draftCache);
     nextDrafts.delete(path);
     draftCache = nextDrafts;
+    const nextSaveErrors = new Map(saveErrorsByPath);
+    nextSaveErrors.delete(path);
+    saveErrorsByPath = nextSaveErrors;
 
     if (activePath !== path) return;
     const nextActive = nextTabs[Math.min(closingIndex, nextTabs.length - 1)] ?? nextTabs[nextTabs.length - 1];
@@ -615,28 +633,27 @@
   function cancelEditing() {
     draftContent = activeFile?.encoding === "utf8" ? activeFile.content : "";
     if (activePath) rememberDraft(activePath, draftContent);
-    saveError = null;
+    if (activePath) setSaveErrorForPath(activePath, null);
   }
 
   async function saveEditing() {
     const target = activePath;
     if (!target || !dirty || savingPaths.has(target)) return;
     savingPaths = new Set([...savingPaths, target]);
-    saveError = null;
+    setSaveErrorForPath(target, null);
     const submittedContent = draftContent;
     try {
       const result = await writeFile(target, submittedContent);
       const latestDraft = draftCache.get(target);
       cacheFileResult(result, latestDraft == null || latestDraft === submittedContent);
+      setSaveErrorForPath(target, null);
       pinTab(target);
       if (activePath === target) {
         clearLspState();
       }
       void refreshDir(parentPath(target));
     } catch (err) {
-      if (activePath === target) {
-        saveError = err instanceof Error ? err.message : String(err);
-      }
+      setSaveErrorForPath(target, err instanceof Error ? err.message : String(err));
     } finally {
       const nextSaving = new Set(savingPaths);
       nextSaving.delete(target);

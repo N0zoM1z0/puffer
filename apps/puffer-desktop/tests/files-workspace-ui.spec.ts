@@ -244,6 +244,39 @@ test("Files tab clears dirty state for an inactive file after save succeeds", as
   await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
 });
 
+test("Files tab shows save failure after returning to an inactive failed save", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  daemon.delayResponse(
+    "write_file",
+    (request) => request.params.path === "/tmp/puffer/src/main.rs",
+    220
+  );
+  daemon.failNext("write_file", "permission denied");
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openRegressionAgent(page);
+  await openFilesPanel(page);
+
+  const editor = page.getByLabel("Edit file contents");
+  await expect(editor).toHaveValue("fn main() {}\n");
+  await editor.fill("fn main() {\n    println!(\"will fail\");\n}\n");
+  await page.getByRole("button", { name: "Save" }).click();
+  await daemon.waitForRequest(
+    "write_file",
+    (candidate) => candidate.params.path === "/tmp/puffer/src/main.rs"
+  );
+
+  await page.getByRole("tab", { name: /lib\.rs/ }).click();
+  await expect(editor).toHaveValue("pub fn fixture() {}\n");
+  await page.waitForTimeout(260);
+  await page.getByRole("tab", { name: /main\.rs/ }).click();
+
+  await expect(page.locator(".save-error")).toContainText("permission denied");
+  await expect(page.locator(".file-tab.active .dirty-dot")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
+});
+
 test("Files tab can save another dirty file while a prior file save is pending", async ({ page }) => {
   const daemon = new FakeDaemon();
   daemon.delayResponse(
