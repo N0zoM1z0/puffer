@@ -7,7 +7,7 @@
 
   type Props = {
     item: UserQuestionTimelineItem;
-    onResolve: (questionId: string, answers: Answers, annotations?: Annotations) => void;
+    onResolve: (questionId: string, answers: Answers, annotations?: Annotations) => void | Promise<void>;
   };
 
   let { item, onResolve }: Props = $props();
@@ -15,6 +15,7 @@
   let customText = $state<Record<string, string>>({});
   let customActive = $state<Record<string, boolean>>({});
   let collapsed = $state(false);
+  let submitting = $state(false);
   let lastItemId: string | null = null;
 
   let answered = $derived(item.status !== "pending");
@@ -118,13 +119,18 @@
   }
 
   function canSubmit(): boolean {
-    if (answered) return false;
+    if (answered || submitting) return false;
     return item.questions.every((question) => hasAnswer(question));
   }
 
-  function submit() {
+  async function submit() {
     if (answered || !canSubmit()) return;
-    onResolve(item.id, buildAnswers(), {});
+    submitting = true;
+    try {
+      await onResolve(item.id, buildAnswers(), {});
+    } finally {
+      submitting = false;
+    }
   }
 </script>
 
@@ -173,7 +179,7 @@
                 type={question.multiSelect ? "checkbox" : "radio"}
                 name={`question-${item.id}-${index}`}
                 checked={checked(question, option.label)}
-                disabled={answered}
+                disabled={answered || submitting}
                 onchange={() =>
                   question.multiSelect
                     ? toggleMulti(question, option.label)
@@ -199,7 +205,7 @@
               type={question.multiSelect ? "checkbox" : "radio"}
               name={`question-${item.id}-${index}`}
               checked={customChecked(question)}
-              disabled={answered}
+              disabled={answered || submitting}
               onchange={(event) => {
                 const checked = (event.currentTarget as HTMLInputElement).checked;
                 if (question.multiSelect) {
@@ -219,6 +225,7 @@
                 class="pf-question-other-input"
                 value={customValue(question)}
                 placeholder="Type another answer"
+                disabled={submitting}
                 onfocus={() => {
                   if (!question.multiSelect) customActive = { ...customActive, [keyFor(question)]: true };
                 }}
@@ -238,9 +245,9 @@
           data-variant="default"
           data-size="sm"
           disabled={!canSubmit()}
-          onclick={() => submit()}
+          onclick={() => void submit()}
         >
-          Send answer
+          {submitting ? "Sending..." : "Send answer"}
         </button>
       </div>
     {/if}

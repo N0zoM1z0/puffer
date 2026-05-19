@@ -478,6 +478,36 @@ test("failed question responses keep the question prompt retryable", async ({ pa
   await expect(page.getByRole("button", { name: "Send answer" })).toBeEnabled();
 });
 
+test("question prompts submit only once while resolution is pending", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  daemon.delayResponse("resolve_user_question", () => true, 180);
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openSession(page, /^Browser regression\b/);
+  daemon.emit("session:session-browser:event", {
+    type: "user-question-request",
+    turnId: "turn-question",
+    requestId: "question-1",
+    questions: [
+      {
+        header: "Path",
+        question: "Which path should I use?",
+        options: [
+          { label: "src", description: "Use the src directory." },
+          { label: "tests", description: "Use the tests directory." }
+        ]
+      }
+    ]
+  });
+
+  await page.getByPlaceholder("Type another answer").fill("examples");
+  await page.getByRole("button", { name: "Send answer" }).dblclick();
+  await expect(page.getByRole("button", { name: "Sending..." })).toBeDisabled();
+  await page.waitForTimeout(60);
+  expect(daemon.requests.filter((request) => request.method === "resolve_user_question")).toHaveLength(1);
+});
+
 test("composer sends selected thinking option with the turn request", async ({ page }) => {
   const daemon = new FakeDaemon();
   await daemon.install(page);
