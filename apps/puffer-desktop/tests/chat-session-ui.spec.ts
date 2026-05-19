@@ -1450,6 +1450,73 @@ test("failed stop turn requests surface a retryable error", async ({ page }) => 
   await expect(page.getByRole("button", { name: "Stop turn" })).toBeEnabled();
 });
 
+test("late stop-turn failures do not pollute a newly selected session", async ({ page }) => {
+  const daemon = new FakeDaemon({
+    sessions: [
+      {
+        sessionId: "session-alpha-stop",
+        displayName: "Alpha stop",
+        title: "Alpha stop",
+        cwd: "/tmp/puffer",
+        folderPath: "/tmp/puffer",
+        updatedAtMs: baseTime,
+        createdAtMs: baseTime - 60_000,
+        eventCount: 1,
+        timeline: [
+          {
+            kind: "assistant_message",
+            id: "alpha-stop-seed",
+            text: "Alpha stop transcript",
+            createdAtMs: baseTime - 30_000
+          }
+        ]
+      },
+      {
+        sessionId: "session-beta-stop",
+        displayName: "Beta stop",
+        title: "Beta stop",
+        cwd: "/tmp/puffer",
+        folderPath: "/tmp/puffer",
+        updatedAtMs: baseTime - 1_000,
+        createdAtMs: baseTime - 120_000,
+        eventCount: 1,
+        timeline: [
+          {
+            kind: "assistant_message",
+            id: "beta-stop-seed",
+            text: "Beta stop transcript",
+            createdAtMs: baseTime - 90_000
+          }
+        ]
+      }
+    ]
+  });
+  daemon.delayResponse("cancel_turn", () => true, 180);
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openSession(page, /Alpha stop/);
+  await expect(page.getByText("Alpha stop transcript")).toBeVisible();
+  await page.locator(".pf-composer textarea").fill("Cancel alpha late");
+  await page.getByRole("button", { name: "Send" }).click();
+  await daemon.waitForRequest(
+    "run_agent_turn",
+    (request) => request.params.sessionId === "session-alpha-stop"
+  );
+
+  daemon.failNext("cancel_turn", "cancel channel closed");
+  await page.getByRole("button", { name: "Stop turn" }).click();
+  await daemon.waitForRequest("cancel_turn");
+
+  await openSession(page, /Beta stop/);
+  await expect(page.getByText("Beta stop transcript")).toBeVisible();
+  await page.waitForTimeout(230);
+
+  await expect(page.getByText("Beta stop transcript")).toBeVisible();
+  await expect(page.getByText("Stop request failed")).toHaveCount(0);
+  await expect(page.getByText("cancel channel closed")).toHaveCount(0);
+});
+
 test("session title edit saves through the daemon", async ({ page }) => {
   const daemon = new FakeDaemon({
     sessions: [

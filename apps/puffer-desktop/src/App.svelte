@@ -1260,16 +1260,23 @@
   async function cancelCurrentTurn() {
     if (!currentTurnId || cancelTurnInFlight) return;
     const turnId = currentTurnId;
+    const originSessionId = selectedSession?.id ?? null;
+    const originLoadGeneration = sessionLoadGeneration;
     cancelTurnInFlight = true;
     try {
       await cancelTurnRequest(turnId);
+      if (!isSameSelectedSession(originSessionId, originLoadGeneration)) return;
       statusMessage = "Stop request sent to agent.";
     } catch (error) {
+      if (!isSameSelectedSession(originSessionId, originLoadGeneration)) return;
       const detail = errorText(error);
       statusMessage = `cancel_turn failed: ${detail}`;
       appendAgentError("Stop request failed", detail, "cancel-turn-error");
     } finally {
-      if (currentTurnId === turnId || currentTurnId === null) {
+      if (
+        isSameSelectedSession(originSessionId, originLoadGeneration) &&
+        (currentTurnId === turnId || currentTurnId === null)
+      ) {
         cancelTurnInFlight = false;
       }
     }
