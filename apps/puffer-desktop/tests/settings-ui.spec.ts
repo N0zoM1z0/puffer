@@ -535,6 +535,41 @@ test("MCP settings ignore stale test results after removing the server", async (
   await expect(page.getByText("Removed github")).toBeVisible();
 });
 
+test("MCP settings ignore stale save results after workspace refresh", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  daemon.delayResponse("add_mcp_server", () => true, 240);
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "MCP Servers" }).click();
+  await expect(page.locator(".pf-mcp-card .title").filter({ hasText: "Playwright" })).toBeVisible();
+
+  await page.getByLabel("ID").fill("github");
+  await page.getByLabel("Name").fill("GitHub");
+  await page.getByLabel("Command").fill("npx");
+  await page.getByLabel("Arguments").fill("@modelcontextprotocol/server-github");
+  await page.getByRole("button", { name: "Add server" }).click();
+  await daemon.waitForRequest("add_mcp_server");
+
+  daemon.setWorkspaceRoot("/tmp/puffer-next");
+  daemon.setMcpServers([]);
+  await page.getByRole("button", { name: "General" }).click();
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await expect(page.locator(".pf-settings-row").filter({ hasText: "Workspace root" })).toContainText(
+    "/tmp/puffer-next"
+  );
+
+  await page.getByRole("button", { name: "MCP Servers" }).click();
+  await expect(page.getByText("No MCP servers configured.")).toBeVisible();
+  await expect(page.getByLabel("ID")).toBeEnabled();
+  await page.waitForTimeout(280);
+  await expect(page.getByText("No MCP servers configured.")).toBeVisible();
+  await expect(page.locator(".pf-mcp-card .title").filter({ hasText: "GitHub" })).toHaveCount(0);
+  await expect(page.getByText("Added github")).toHaveCount(0);
+  await expect(page.getByLabel("ID")).toBeEnabled();
+});
+
 test("MCP settings ignore stale server loads after workspace refresh", async ({ page }) => {
   const daemon = new FakeDaemon();
   daemon.delayResponse("list_mcp_servers", () => true, 260);

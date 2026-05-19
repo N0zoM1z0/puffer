@@ -90,6 +90,8 @@
   let mcpLoading = $state(false);
   let mcpLoadGeneration = 0;
   let mcpMutationGeneration = 0;
+  let mcpSaveGeneration = 0;
+  let mcpRemoveGeneration = 0;
   let mcpSaving = $state(false);
   let mcpRemovingId = $state<string | null>(null);
   let mcpTestingId = $state<string | null>(null);
@@ -209,6 +211,8 @@
     const id = mcpForm.id.trim();
     const targetOrUrl = mcpTargetValue();
     if (!id || !targetOrUrl) return;
+    const mutationGeneration = mcpMutationGeneration;
+    const saveGeneration = ++mcpSaveGeneration;
     mcpSaving = true;
     mcpError = null;
     mcpSaved = null;
@@ -221,9 +225,11 @@
         endpoint: mcpForm.transport === "stdio" ? undefined : targetOrUrl,
         target: mcpForm.transport === "stdio" ? targetOrUrl : undefined
       };
-      mcpServers = mcpEditingId
+      const servers = mcpEditingId
         ? await updateMcpServer({ ...payload, originalId: mcpEditingId })
         : await addMcpServer({ ...payload, scope: mcpForm.scope });
+      if (mutationGeneration !== mcpMutationGeneration || saveGeneration !== mcpSaveGeneration) return;
+      mcpServers = servers;
       mcpMutationGeneration += 1;
       mcpLoaded = true;
       mcpSaved = mcpEditingId ? `Updated ${id}` : `Added ${id}`;
@@ -239,27 +245,37 @@
       };
       props.onRefresh();
     } catch (e) {
+      if (mutationGeneration !== mcpMutationGeneration || saveGeneration !== mcpSaveGeneration) return;
       mcpError = (e as Error).message ?? String(e);
     } finally {
-      mcpSaving = false;
+      if (saveGeneration === mcpSaveGeneration) {
+        mcpSaving = false;
+      }
     }
   }
 
   async function removeMcpServerFromSettings(server: McpServerInfo) {
     if (!editableMcpServer(server) || mcpRemovingId) return;
+    const mutationGeneration = mcpMutationGeneration;
+    const removeGeneration = ++mcpRemoveGeneration;
     mcpRemovingId = server.id;
     mcpError = null;
     mcpSaved = null;
     try {
-      mcpServers = await removeMcpServer(server.id);
+      const servers = await removeMcpServer(server.id);
+      if (mutationGeneration !== mcpMutationGeneration || removeGeneration !== mcpRemoveGeneration) return;
+      mcpServers = servers;
       mcpMutationGeneration += 1;
       if (mcpEditingId === server.id) cancelMcpEdit();
       mcpSaved = `Removed ${server.id}`;
       props.onRefresh();
     } catch (e) {
+      if (mutationGeneration !== mcpMutationGeneration || removeGeneration !== mcpRemoveGeneration) return;
       mcpError = (e as Error).message ?? String(e);
     } finally {
-      mcpRemovingId = null;
+      if (removeGeneration === mcpRemoveGeneration) {
+        mcpRemovingId = null;
+      }
     }
   }
 
@@ -468,8 +484,23 @@
     mcpLoading = false;
     mcpLoadGeneration += 1;
     mcpMutationGeneration += 1;
+    mcpSaveGeneration += 1;
+    mcpRemoveGeneration += 1;
+    mcpSaving = false;
+    mcpRemovingId = null;
+    mcpTestingId = null;
+    mcpEditingId = null;
     mcpError = null;
     mcpSaved = null;
+    mcpForm = {
+      id: "",
+      displayName: "",
+      transport: "stdio",
+      commandOrUrl: "",
+      args: "",
+      description: "",
+      scope: "local"
+    };
 
     providerModels = {};
     modelLoadingByProvider = {};
