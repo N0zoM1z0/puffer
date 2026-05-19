@@ -436,16 +436,17 @@ export class FakeDaemon {
     };
     this.record(request);
 
+    const delay = this.takeResponseDelay(request);
+    let outbound: string;
     try {
-      const outbound = this.response(request.id, this.dispatch(request));
-      const delay = this.takeResponseDelay(request);
-      if (delay === null) {
-        socket.send(outbound);
-      } else {
-        setTimeout(() => socket.send(outbound), delay);
-      }
+      outbound = this.response(request.id, this.dispatch(request));
     } catch (error) {
-      socket.send(this.failure(request.id, String(error)));
+      outbound = this.failure(request.id, String(error));
+    }
+    if (delay === null) {
+      socket.send(outbound);
+    } else {
+      setTimeout(() => socket.send(outbound), delay);
     }
   }
 

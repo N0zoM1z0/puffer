@@ -368,6 +368,41 @@ test("late Browser close-tab responses do not drop newer tabs", async ({ page })
   await expect(page.locator(".pf-browser-tab")).toHaveCount(2);
 });
 
+test("late Browser focus failures do not pollute the active tab", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openRegressionAgent(page);
+  await openAgentPanel(page, "Browser");
+  await daemon.waitForRequest("browser_open", (request) =>
+    request.params.sessionId === "session-browser:browser:tab-1"
+  );
+  await page.getByRole("button", { name: "New tab" }).click();
+  await daemon.waitForRequest("browser_agent", (candidate) =>
+    candidate.params.action === "open" && candidate.params.tabId === "tab-2"
+  );
+
+  daemon.delayResponse(
+    "browser_agent",
+    (request) => request.params.action === "focus" && request.params.tabId === "tab-1",
+    160
+  );
+  daemon.failNext("browser_agent", "focus failed");
+  await page.locator(".pf-browser-tab").first().click();
+  await daemon.waitForRequest("browser_agent", (candidate) =>
+    candidate.params.action === "focus" && candidate.params.tabId === "tab-1"
+  );
+  await page.locator(".pf-browser-tab").nth(1).click();
+  await daemon.waitForRequest("browser_agent", (candidate) =>
+    candidate.params.action === "focus" && candidate.params.tabId === "tab-2"
+  );
+
+  await expect(page.locator(".pf-browser-tab").nth(1)).toHaveAttribute("aria-selected", "true");
+  await page.waitForTimeout(210);
+  await expect(page.locator(".pf-browser-error")).toHaveCount(0);
+});
+
 test("Browser tab list event can clear stale tabs", async ({ page }) => {
   const daemon = new FakeDaemon();
   await daemon.install(page);

@@ -571,10 +571,12 @@
 
   function selectTab(tabId: string) {
     if (tabId === activeTabId) return;
+    const focusGeneration = sessionGeneration;
     activeTabId = tabId;
     syncFromActiveTab();
     if (activeTab?.frame) renderFrame(activeTab.frame);
     void browserTabFocus(sessionId, tabId).catch((err) => {
+      if (disposed || focusGeneration !== sessionGeneration || activeTabId !== tabId) return;
       error = String(err);
     });
     void connectActiveTab();
