@@ -482,6 +482,47 @@ test("late Browser navigation failures do not mark the active tab", async ({ pag
   await expect(page.locator(".pf-browser-error")).toHaveCount(0);
 });
 
+test("late Browser reload failures do not mark the active tab", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openRegressionAgent(page);
+  await openAgentPanel(page, "Browser");
+  await daemon.waitForRequest("browser_open", (request) =>
+    request.params.sessionId === "session-browser:browser:tab-1"
+  );
+  await page.getByRole("button", { name: "New tab" }).click();
+  await daemon.waitForRequest("browser_agent", (candidate) =>
+    candidate.params.action === "open" && candidate.params.tabId === "tab-2"
+  );
+
+  await page.locator(".pf-browser-tab").first().click();
+  await daemon.waitForRequest("browser_agent", (candidate) =>
+    candidate.params.action === "focus" && candidate.params.tabId === "tab-1"
+  );
+
+  daemon.delayResponse(
+    "browser_reload",
+    (request) => request.params.sessionId === "session-browser:browser:tab-1",
+    160
+  );
+  daemon.failNext("browser_reload", "reload failed");
+  await page.locator(".pf-browser-icon[title='Reload']").click();
+  await daemon.waitForRequest("browser_reload", (candidate) =>
+    candidate.params.sessionId === "session-browser:browser:tab-1"
+  );
+  await page.locator(".pf-browser-tab").nth(1).click();
+  await daemon.waitForRequest("browser_agent", (candidate) =>
+    candidate.params.action === "focus" && candidate.params.tabId === "tab-2"
+  );
+
+  await page.waitForTimeout(210);
+  await expect(page.locator(".pf-browser-tab").nth(1)).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator(".pf-browser-status")).toHaveText("Connected");
+  await expect(page.locator(".pf-browser-error")).toHaveCount(0);
+});
+
 test("Browser tab list event can clear stale tabs", async ({ page }) => {
   const daemon = new FakeDaemon();
   await daemon.install(page);

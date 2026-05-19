@@ -117,8 +117,9 @@
       if (!size) return;
       lastResize = size;
       if (connected && activeTabId) {
-        void browserResize(activeBackendSessionId(), size.width, size.height).catch((err) => {
-          error = String(err);
+        const targetSessionId = activeBackendSessionId();
+        void browserResize(targetSessionId, size.width, size.height).catch((err) => {
+          reportActiveBrowserError(targetSessionId, err);
         });
       }
     });
@@ -349,6 +350,16 @@
     return `${sessionId}:browser:${activeTabId}`;
   }
 
+  function isCurrentBackendSession(targetSessionId: string): boolean {
+    return !disposed && Boolean(activeTabId) && activeBackendSessionId() === targetSessionId;
+  }
+
+  function reportActiveBrowserError(targetSessionId: string, err: unknown) {
+    if (isCurrentBackendSession(targetSessionId)) {
+      error = String(err);
+    }
+  }
+
   function backendSessionId(tabId: string): string {
     return `${sessionId}:browser:${tabId}`;
   }
@@ -546,6 +557,22 @@
     }
   }
 
+  function navigateHistory(direction: "back" | "forward") {
+    if (!connected || !activeTabId) return;
+    const targetSessionId = activeBackendSessionId();
+    void browserHistory(targetSessionId, direction).catch((err) => {
+      reportActiveBrowserError(targetSessionId, err);
+    });
+  }
+
+  function reloadActiveTab() {
+    if (!connected || !activeTabId) return;
+    const targetSessionId = activeBackendSessionId();
+    void browserReload(targetSessionId).catch((err) => {
+      reportActiveBrowserError(targetSessionId, err);
+    });
+  }
+
   async function addTab() {
     const size = measureViewport() ?? lastResize;
     const targetSessionId = sessionId;
@@ -719,7 +746,8 @@
       buttons = 0;
       click_count = activeClickCount || 1;
     }
-    void browserInput(activeBackendSessionId(), {
+    const targetSessionId = activeBackendSessionId();
+    void browserInput(targetSessionId, {
       kind: "mouse",
       eventType,
       x: point.x,
@@ -728,7 +756,7 @@
       buttons,
       clickCount: click_count
     }).catch((err) => {
-      error = String(err);
+      reportActiveBrowserError(targetSessionId, err);
     });
     if (eventType === "mouseReleased") {
       resetPointer(event.pointerId);
@@ -820,14 +848,15 @@
     if (!connected) return;
     event.preventDefault();
     const point = canvasPoint(event);
-    void browserInput(activeBackendSessionId(), {
+    const targetSessionId = activeBackendSessionId();
+    void browserInput(targetSessionId, {
       kind: "wheel",
       x: point.x,
       y: point.y,
       deltaX: event.deltaX,
       deltaY: event.deltaY
     }).catch((err) => {
-      error = String(err);
+      reportActiveBrowserError(targetSessionId, err);
     });
   }
 
@@ -853,9 +882,7 @@
     event.preventDefault();
     handledBrowserShortcutCodes.add(event.code);
     if (key === "r") {
-      void browserReload(activeBackendSessionId()).catch((err) => {
-        error = String(err);
-      });
+      reloadActiveTab();
     } else if (key === "l") {
       addressInput?.focus();
       addressInput?.select();
@@ -877,7 +904,8 @@
     }
     event.preventDefault();
     const text = event.key.length === 1 && !event.metaKey && !event.ctrlKey ? event.key : undefined;
-    void browserInput(activeBackendSessionId(), {
+    const targetSessionId = activeBackendSessionId();
+    void browserInput(targetSessionId, {
       kind: "key",
       eventType: keyType(event),
       key: event.key,
@@ -885,7 +913,7 @@
       ...(text ? { text } : {}),
       modifiers: modifiers(event)
     }).catch((err) => {
-      error = String(err);
+      reportActiveBrowserError(targetSessionId, err);
     });
   }
 
@@ -900,14 +928,15 @@
       return;
     }
     event.preventDefault();
-    void browserInput(activeBackendSessionId(), {
+    const targetSessionId = activeBackendSessionId();
+    void browserInput(targetSessionId, {
       kind: "key",
       eventType: "keyUp",
       key: event.key,
       code: event.code,
       modifiers: modifiers(event)
     }).catch((err) => {
-      error = String(err);
+      reportActiveBrowserError(targetSessionId, err);
     });
   }
 
@@ -916,14 +945,17 @@
     const text = event.clipboardData?.getData("text/plain") ?? "";
     if (!text) return;
     event.preventDefault();
-    void browserInput(activeBackendSessionId(), { kind: "text", text }).catch((err) => {
-      error = String(err);
+    const targetSessionId = activeBackendSessionId();
+    void browserInput(targetSessionId, { kind: "text", text }).catch((err) => {
+      reportActiveBrowserError(targetSessionId, err);
     });
   }
 
   async function copySelection() {
+    const targetSessionId = activeBackendSessionId();
     try {
-      const result = await browserCopySelection(activeBackendSessionId());
+      const result = await browserCopySelection(targetSessionId);
+      if (!isCurrentBackendSession(targetSessionId)) return;
       if (!result.text) {
         status = "No selection";
         return;
@@ -932,7 +964,7 @@
       error = null;
       status = "Copied selected text";
     } catch (err) {
-      error = String(err);
+      reportActiveBrowserError(targetSessionId, err);
     }
   }
 
@@ -996,7 +1028,7 @@
       type="button"
       title="Back"
       disabled={!browserControlsEnabled}
-      onclick={() => browserHistory(activeBackendSessionId(), "back").catch((err) => (error = String(err)))}
+      onclick={() => navigateHistory("back")}
     >
       <Icon name="chevL" size={14} />
     </button>
@@ -1005,7 +1037,7 @@
       type="button"
       title="Forward"
       disabled={!browserControlsEnabled}
-      onclick={() => browserHistory(activeBackendSessionId(), "forward").catch((err) => (error = String(err)))}
+      onclick={() => navigateHistory("forward")}
     >
       <Icon name="chevR" size={14} />
     </button>
@@ -1014,7 +1046,7 @@
       type="button"
       title="Reload"
       disabled={!browserControlsEnabled}
-      onclick={() => browserReload(activeBackendSessionId()).catch((err) => (error = String(err)))}
+      onclick={reloadActiveTab}
     >
       <Icon name="refresh" size={14} />
     </button>
