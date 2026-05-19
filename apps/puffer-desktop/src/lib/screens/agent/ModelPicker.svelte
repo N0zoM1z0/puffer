@@ -32,6 +32,7 @@
   let loadError = $state<string | null>(null);
   let triggerEl: HTMLButtonElement | null = $state(null);
   let menuEl: HTMLDivElement | null = $state(null);
+  let providerSelectionGeneration = 0;
 
   let currentProvider = $derived(
     currentProviderOverride ?? snapshot?.config?.defaultProvider ?? ""
@@ -79,9 +80,9 @@
     loadError = null;
     try {
       const next: Record<string, ModelDescriptorInfo[]> = { ...modelsByProvider };
-      const providers = allowProviderSwitch
-        ? authedProviders
-        : authedProviders.filter((provider) => providerIdsEquivalent(provider.id, currentProvider));
+      const providers = authedProviders.filter((provider) =>
+        providerIdsEquivalent(provider.id, currentProvider)
+      );
       for (const provider of providers) {
         if (next[provider.id]) continue;
         try {
@@ -100,6 +101,7 @@
   async function selectProvider(providerId: string) {
     if (!allowProviderSwitch || disabled) return;
     if (providerIdsEquivalent(providerId, currentProvider)) return;
+    const generation = ++providerSelectionGeneration;
     query = "";
     let models = modelsByProvider[providerId] ?? [];
     if (models.length === 0) {
@@ -107,15 +109,18 @@
       loadError = null;
       try {
         models = await listProviderModels(providerId);
+        if (generation !== providerSelectionGeneration) return;
         modelsByProvider = { ...modelsByProvider, [providerId]: models };
       } catch (error) {
+        if (generation !== providerSelectionGeneration) return;
         modelsByProvider = { ...modelsByProvider, [providerId]: [] };
         loadError = `${providerId}: ${error}`;
         models = [];
       } finally {
-        busy = false;
+        if (generation === providerSelectionGeneration) busy = false;
       }
     }
+    if (generation !== providerSelectionGeneration) return;
     const defaultModel = models.find((model) => model.isDefault) ?? models[0];
     onChange(providerId, defaultModel?.id ?? "");
   }
@@ -130,6 +135,7 @@
 
   function pick(providerId: string, modelId: string) {
     if (disabled) return;
+    providerSelectionGeneration += 1;
     open = false;
     query = "";
     onChange(providerId, modelId);

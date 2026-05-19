@@ -638,6 +638,160 @@ test("composer controls handle provider-prefixed session model ids", async ({ pa
   });
 });
 
+test("model picker ignores stale provider selection responses", async ({ page }) => {
+  const daemon = new FakeDaemon({
+    auth: [
+      {
+        providerId: "openai",
+        kind: "api_key",
+        email: null,
+        expiresAtMs: null,
+        scopes: [],
+        planType: null,
+        organizationName: null
+      },
+      {
+        providerId: "anthropic",
+        kind: "api_key",
+        email: null,
+        expiresAtMs: null,
+        scopes: [],
+        planType: null,
+        organizationName: null
+      },
+      {
+        providerId: "codex",
+        kind: "oauth",
+        email: "tester@example.com",
+        expiresAtMs: null,
+        scopes: [],
+        planType: "test",
+        organizationName: null
+      }
+    ],
+    providers: [
+      {
+        id: "openai",
+        displayName: "OpenAI",
+        baseUrl: "",
+        defaultApi: "openai-responses",
+        modelCount: 1,
+        authModes: ["api_key"],
+        sourceKind: "test",
+        sourcePath: null
+      },
+      {
+        id: "anthropic",
+        displayName: "Anthropic",
+        baseUrl: "",
+        defaultApi: "anthropic-messages",
+        modelCount: 1,
+        authModes: ["api_key"],
+        sourceKind: "test",
+        sourcePath: null
+      },
+      {
+        id: "codex",
+        displayName: "Codex",
+        baseUrl: "",
+        defaultApi: "openai-responses",
+        modelCount: 1,
+        authModes: ["oauth"],
+        sourceKind: "test",
+        sourcePath: null
+      }
+    ],
+    sessions: [
+      {
+        sessionId: "session-model-race",
+        displayName: "Model race",
+        title: "Model race",
+        cwd: "/tmp/puffer",
+        folderPath: "/tmp/puffer",
+        updatedAtMs: baseTime,
+        createdAtMs: baseTime - 60_000,
+        eventCount: 0,
+        providerId: "openai",
+        modelId: "gpt-5",
+        timeline: []
+      }
+    ],
+    providerModels: {
+      openai: [
+        {
+          id: "gpt-5",
+          displayName: "GPT-5",
+          provider: "openai",
+          api: "openai-responses",
+          contextWindow: 128000,
+          maxOutputTokens: 4096,
+          supportsReasoning: false,
+          thinkingOptions: [],
+          defaultThinkingOptionId: null,
+          isDefault: true
+        }
+      ],
+      anthropic: [
+        {
+          id: "claude-race",
+          displayName: "Claude Race",
+          provider: "anthropic",
+          api: "anthropic-messages",
+          contextWindow: 200000,
+          maxOutputTokens: 4096,
+          supportsReasoning: false,
+          thinkingOptions: [],
+          defaultThinkingOptionId: null,
+          isDefault: true
+        }
+      ],
+      codex: [
+        {
+          id: "codex-race",
+          displayName: "Codex Race",
+          provider: "codex",
+          api: "openai-responses",
+          contextWindow: 128000,
+          maxOutputTokens: 4096,
+          supportsReasoning: false,
+          thinkingOptions: [],
+          defaultThinkingOptionId: null,
+          isDefault: true
+        }
+      ]
+    }
+  });
+  daemon.delayResponse(
+    "list_provider_models",
+    (request) => request.params.providerId === "anthropic",
+    220
+  );
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openSession(page, /Model race/);
+  await page.locator(".pf-composer .trigger").click();
+  const picker = page.locator(".pf-composer .menu");
+  await picker.getByRole("button", { name: "Anthropic" }).click();
+  await picker.getByRole("option", { name: /GPT-5/ }).click();
+
+  await expect(page.locator(".pf-composer .trigger")).toContainText("gpt-5");
+  await page.waitForTimeout(260);
+  await expect(page.locator(".pf-composer .trigger")).toContainText("gpt-5");
+
+  await page.locator(".pf-composer textarea").fill("Use latest provider");
+  await page.getByRole("button", { name: "Send" }).click();
+  const request = await daemon.waitForRequest(
+    "run_agent_turn",
+    (item) => item.params.message === "Use latest provider"
+  );
+  expect(request.params).toMatchObject({
+    providerId: "openai",
+    modelId: "gpt-5"
+  });
+});
+
+
 for (const scenario of [
   {
     label: "Codex",
