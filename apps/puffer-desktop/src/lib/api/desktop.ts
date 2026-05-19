@@ -190,6 +190,10 @@ function remoteArgs(remote?: RemoteConnection): Record<string, unknown> {
   };
 }
 
+function shouldInvokeRemote(remote?: RemoteConnection): boolean {
+  return canInvokeTauri() && Boolean(remote?.enabled && remote.target.trim());
+}
+
 type BackendSettingsConfig = SettingsSnapshot["config"];
 type BackendResourceCounts = SettingsSnapshot["resources"];
 type BackendSettingsSessionSummary = SettingsSnapshot["sessions"];
@@ -613,11 +617,14 @@ export async function mergePullRequest(
 }
 
 export async function loadSettingsSnapshot(remote?: RemoteConnection): Promise<SettingsSnapshot> {
+  if (shouldInvokeRemote(remote)) {
+    return invoke<BackendSettingsSnapshot>("load_settings_snapshot", remoteArgs(remote));
+  }
+  if (canReachDaemon()) {
+    const client = await ensureLocalDaemonClient();
+    return client.request<BackendSettingsSnapshot>("load_settings_snapshot");
+  }
   if (!canInvokeTauri()) {
-    if (canReachDaemon()) {
-      const client = await ensureLocalDaemonClient();
-      return client.request<BackendSettingsSnapshot>("load_settings_snapshot");
-    }
     return mockSettingsSnapshot;
   }
   return invoke<BackendSettingsSnapshot>("load_settings_snapshot", remoteArgs(remote));
@@ -627,13 +634,19 @@ export async function loginWithOauth(
   providerId: string,
   remote?: RemoteConnection
 ): Promise<SettingsSnapshot> {
+  if (shouldInvokeRemote(remote)) {
+    return invoke<BackendSettingsSnapshot>("login_with_oauth", {
+      providerId,
+      ...remoteArgs(remote)
+    });
+  }
+  if (canReachDaemon()) {
+    const client = await ensureLocalDaemonClient();
+    return client.request<BackendSettingsSnapshot>("login_with_oauth", {
+      providerId
+    });
+  }
   if (!canInvokeTauri()) {
-    if (canReachDaemon()) {
-      const client = await ensureLocalDaemonClient();
-      return client.request<BackendSettingsSnapshot>("login_with_oauth", {
-        providerId
-      });
-    }
     return mockSettingsSnapshot;
   }
   return invoke<BackendSettingsSnapshot>("login_with_oauth", {
@@ -647,14 +660,21 @@ export async function loginWithApiKey(
   apiKey: string,
   remote?: RemoteConnection
 ): Promise<SettingsSnapshot> {
+  if (shouldInvokeRemote(remote)) {
+    return invoke<BackendSettingsSnapshot>("login_with_api_key", {
+      providerId,
+      apiKey,
+      ...remoteArgs(remote)
+    });
+  }
+  if (canReachDaemon()) {
+    const client = await ensureLocalDaemonClient();
+    return client.request<BackendSettingsSnapshot>("login_with_api_key", {
+      providerId,
+      apiKey
+    });
+  }
   if (!canInvokeTauri()) {
-    if (canReachDaemon()) {
-      const client = await ensureLocalDaemonClient();
-      return client.request<BackendSettingsSnapshot>("login_with_api_key", {
-        providerId,
-        apiKey
-      });
-    }
     return mockSettingsSnapshot;
   }
   return invoke<BackendSettingsSnapshot>("login_with_api_key", {
@@ -669,11 +689,11 @@ export async function loginWithApiKey(
  *  shell surfaces these so the user does not have to paste an API key they
  *  already have on disk. */
 export async function listExternalCredentials(): Promise<ExternalCredential[]> {
+  if (canReachDaemon()) {
+    const client = await ensureLocalDaemonClient();
+    return client.request<ExternalCredential[]>("list_external_credentials");
+  }
   if (!canInvokeTauri()) {
-    if (canReachDaemon()) {
-      const client = await ensureLocalDaemonClient();
-      return client.request<ExternalCredential[]>("list_external_credentials");
-    }
     return [];
   }
   return invoke<ExternalCredential[]>("list_external_credentials");
@@ -685,14 +705,14 @@ export async function importExternalCredential(
   providerId: string,
   source: "claude" | "codex"
 ): Promise<SettingsSnapshot> {
+  if (canReachDaemon()) {
+    const client = await ensureLocalDaemonClient();
+    return client.request<BackendSettingsSnapshot>("import_external_credential", {
+      providerId,
+      source
+    });
+  }
   if (!canInvokeTauri()) {
-    if (canReachDaemon()) {
-      const client = await ensureLocalDaemonClient();
-      return client.request<BackendSettingsSnapshot>("import_external_credential", {
-        providerId,
-        source
-      });
-    }
     return mockSettingsSnapshot;
   }
   return invoke<BackendSettingsSnapshot>("import_external_credential", {
@@ -705,13 +725,19 @@ export async function logoutProvider(
   providerId: string,
   remote?: RemoteConnection
 ): Promise<SettingsSnapshot> {
+  if (shouldInvokeRemote(remote)) {
+    return invoke<BackendSettingsSnapshot>("logout_provider", {
+      providerId,
+      ...remoteArgs(remote)
+    });
+  }
+  if (canReachDaemon()) {
+    const client = await ensureLocalDaemonClient();
+    return client.request<BackendSettingsSnapshot>("logout_provider", {
+      providerId
+    });
+  }
   if (!canInvokeTauri()) {
-    if (canReachDaemon()) {
-      const client = await ensureLocalDaemonClient();
-      return client.request<BackendSettingsSnapshot>("logout_provider", {
-        providerId
-      });
-    }
     return mockSettingsSnapshot;
   }
   return invoke<BackendSettingsSnapshot>("logout_provider", {
