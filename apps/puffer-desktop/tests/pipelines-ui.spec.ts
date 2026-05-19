@@ -241,3 +241,29 @@ test("refresh preserves the selected workflow node when it still exists", async 
 
   await expect(page.locator(".pf-editor-inspector").getByLabel("Agent name")).toHaveValue("Second reviewer");
 });
+
+test("removing a node with dependents requires confirmation", async ({ page }) => {
+  const daemon = new FakeDaemon({ workspaceRoot: "/tmp/puffer-workspace" });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: "Pipelines" }).click();
+  await daemon.waitForRequest("workflow_list");
+
+  const inspector = page.locator(".pf-editor-inspector");
+  await expect(inspector.getByLabel("Agent name")).toHaveValue("Codex implementer");
+  await inspector.getByRole("button", { name: "Remove" }).click();
+
+  await expect(inspector.getByRole("alert")).toContainText("Removing this node will drop downstream wiring.");
+  await expect(inspector.getByRole("alert")).toContainText("Claude reviewer");
+  await expect(inspector.getByLabel("Agent name")).toHaveValue("Codex implementer");
+
+  await inspector.getByRole("button", { name: "Cancel" }).click();
+  await expect(inspector.getByRole("alert")).toHaveCount(0);
+  await expect(inspector.getByLabel("Agent name")).toHaveValue("Codex implementer");
+
+  await inspector.getByRole("button", { name: "Remove" }).click();
+  await inspector.getByRole("button", { name: "Remove anyway" }).click();
+  await expect(inspector.getByLabel("Agent name")).toHaveValue("Claude reviewer");
+  await expect(page.locator(".pf-pipe-graph").getByRole("button", { name: /Codex implementer/ })).toHaveCount(0);
+});

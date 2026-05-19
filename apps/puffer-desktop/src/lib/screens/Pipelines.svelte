@@ -112,6 +112,7 @@
   let localDraftHydrated = $state(false);
   let triggerDrafts = $state<Record<string, TriggerDraft>>({});
   let toolInputDrafts = $state<Record<string, string>>({});
+  let pendingRemoveNodeId = $state<string | null>(null);
   let saveNotice = $state("Draft changes are local until workflow save lands in the daemon.");
 
   let workflows = $derived(editorWorkflows);
@@ -349,6 +350,11 @@
     writeLocalDraft();
   });
 
+  $effect(() => {
+    selectedNodeId;
+    pendingRemoveNodeId = null;
+  });
+
   async function refresh() {
     const draftBeforeRefresh = currentLocalDraft();
     loading = true;
@@ -515,6 +521,12 @@
   function removeSelectedNode() {
     if (!workflow || !selectedNode) return;
     const removeId = selectedNode.id;
+    const dependents = dependentNodes(removeId);
+    if (dependents.length > 0 && pendingRemoveNodeId !== removeId) {
+      pendingRemoveNodeId = removeId;
+      return;
+    }
+    pendingRemoveNodeId = null;
     updateCurrentWorkflow((item) => {
       const nodes = item.pipeline.nodes
         .filter((node) => node.id !== removeId)
@@ -525,6 +537,10 @@
       return { ...item, pipeline: { ...item.pipeline, nodes } };
     });
     selectedNodeId = workflow.pipeline.nodes.find((node) => node.id !== removeId)?.id ?? null;
+  }
+
+  function dependentNodes(nodeId: string): EditablePipelineNode[] {
+    return workflow?.pipeline.nodes.filter((node) => (node.depends_on ?? []).includes(nodeId)) ?? [];
   }
 
   function toggleDependency(targetId: string, dependencyId: string, checked: boolean) {
@@ -1031,7 +1047,7 @@
                   <Icon name="x" size={12} />Remove
                 </button>
               {/if}
-            </div>
+              </div>
             {#if selectedNode}
               <div class="pf-provider-switcher" role="group" aria-label="Agent provider">
                 {#each providerOptions as provider (provider.id)}
@@ -1044,6 +1060,23 @@
                   </button>
                 {/each}
               </div>
+              {#if pendingRemoveNodeId === selectedNode.id && dependentNodes(selectedNode.id).length > 0}
+                <div class="pf-editor-remove-warning" role="alert">
+                  <strong>Removing this node will drop downstream wiring.</strong>
+                  <span>
+                    Affected nodes:
+                    {dependentNodes(selectedNode.id).map((node) => node.agent ?? node.id).join(", ")}
+                  </span>
+                  <div class="pf-editor-remove-actions">
+                    <button type="button" class="sc-btn" data-variant="outline" data-size="sm" onclick={() => (pendingRemoveNodeId = null)}>
+                      Cancel
+                    </button>
+                    <button type="button" class="sc-btn" data-variant="ghost" data-size="sm" onclick={removeSelectedNode}>
+                      Remove anyway
+                    </button>
+                  </div>
+                </div>
+              {/if}
               <label>
                 <span>Node id</span>
                 <input value={selectedNode.id} disabled />
@@ -1452,6 +1485,29 @@
     color: var(--pf-run-failed);
     font-size: 10.5px;
     line-height: 1.2;
+  }
+
+  .pf-editor-remove-warning {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    border: 1px solid color-mix(in oklab, var(--pf-run-blocked) 48%, var(--border));
+    border-radius: 10px;
+    padding: 9px;
+    background: color-mix(in oklab, var(--pf-run-blocked) 10%, var(--background));
+    color: var(--foreground);
+    font-size: 11.5px;
+    line-height: 1.35;
+  }
+
+  .pf-editor-remove-warning span {
+    color: var(--muted-foreground);
+  }
+
+  .pf-editor-remove-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
   }
 
   .pf-editor-inline {
