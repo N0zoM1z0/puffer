@@ -288,6 +288,42 @@ test("rapid Browser new-tab clicks allocate unique tab ids", async ({ page }) =>
   await expect(page.locator(".pf-browser-tab")).toHaveCount(3);
 });
 
+test("late Browser new-tab response does not replace newer active tab", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  daemon.delayResponse(
+    "browser_agent",
+    (request) => request.params.action === "open" && request.params.tabId === "tab-2",
+    180
+  );
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openRegressionAgent(page);
+  await openAgentPanel(page, "Browser");
+  await daemon.waitForRequest("browser_open", (request) =>
+    request.params.sessionId === "session-browser:browser:tab-1"
+  );
+
+  const newTab = page.getByRole("button", { name: "New tab" });
+  await newTab.click();
+  await newTab.click();
+  await daemon.waitForRequest(
+    "browser_agent",
+    (request) => request.params.action === "open" && request.params.tabId === "tab-3"
+  );
+
+  await expect(page.locator(".pf-browser-tab")).toHaveCount(3);
+  await page.getByLabel("URL").fill("https://newest-tab.example");
+  await page.getByLabel("URL").press("Enter");
+  const navigate = await daemon.waitForRequest(
+    "browser_navigate",
+    (request) => request.params.url === "https://newest-tab.example"
+  );
+  expect(navigate.params).toMatchObject({
+    sessionId: "session-browser:browser:tab-3"
+  });
+});
+
 test("late Browser new-tab responses do not resurrect cleared tabs", async ({ page }) => {
   const daemon = new FakeDaemon();
   daemon.delayResponse(

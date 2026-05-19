@@ -94,6 +94,7 @@
   let pendingCursorSessionId: string | null = null;
   let tabStateVersion = 0;
   let tabCreationVersion = 0;
+  let latestTabOpenRequest = 0;
   const handledBrowserShortcutCodes = new Set<string>();
 
   let activeTab = $derived(tabs.find((tab) => tab.id === activeTabId) ?? tabs[0]);
@@ -551,6 +552,7 @@
     nextTabNumber += 1;
     const requestedAtVersion = tabStateVersion;
     const requestedAtGeneration = sessionGeneration;
+    const openRequest = ++latestTabOpenRequest;
     try {
       const info = await browserTabOpen({
         sessionId,
@@ -568,11 +570,13 @@
       const tab = tabFromInfo(info);
       tabCreationVersion += 1;
       tabs = [...tabs.filter((item) => item.id !== tab.id), tab];
-      activeTabId = tab.id;
       nextTabNumber = nextTabIndex(tabs);
       saveTabs();
-      syncFromActiveTab();
-      void connectActiveTab(requestedAtGeneration);
+      if (openRequest === latestTabOpenRequest) {
+        activeTabId = tab.id;
+        syncFromActiveTab();
+        void connectActiveTab(requestedAtGeneration);
+      }
     } catch (err) {
       error = String(err);
     }
