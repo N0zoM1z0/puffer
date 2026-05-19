@@ -140,6 +140,11 @@
           </button>
         {/each}
       </div>
+      {#if providerOptions.length === 0}
+        <div class="pf-field-hint">
+          Connect a Codex, OpenAI, Anthropic, Claude, or Puffer provider before starting an agent.
+        </div>
+      {/if}
       <div class="pf-field-hint">
         Session root: <span class="pf-mono">{cwd}</span>
       </div>

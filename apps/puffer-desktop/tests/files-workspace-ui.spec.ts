@@ -519,6 +519,34 @@ test("new agent provider picker only shows authenticated providers", async ({ pa
   });
 });
 
+test("new agent cannot start without an authenticated agent provider", async ({ page }) => {
+  const daemon = new FakeDaemon({
+    auth: githubOnlyAuth,
+    providers: [
+      {
+        id: "github",
+        displayName: "GitHub",
+        baseUrl: "",
+        defaultApi: "rest",
+        modelCount: 0,
+        authModes: ["oauth"],
+        sourceKind: "test",
+        sourcePath: null
+      }
+    ]
+  });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: "New agent in puffer" }).click();
+  const dialog = page.getByRole("dialog", { name: "New agent" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("Connect a Codex, OpenAI, Anthropic, Claude, or Puffer provider")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Start agent" })).toBeDisabled();
+  await page.waitForTimeout(50);
+  expect(daemon.requests.filter((request) => request.method === "create_session")).toHaveLength(0);
+});
+
 test("empty workspace can start a new agent in the default workspace", async ({ page }) => {
   const daemon = new FakeDaemon({ sessions: [] });
   await daemon.install(page);
