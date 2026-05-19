@@ -1149,6 +1149,8 @@ fn tool_definitions_keep_never_approval_tools_enabled() {
 mod agent_loop_e2e;
 #[path = "tests/anthropic_sse_error_event.rs"]
 mod anthropic_sse_error_event;
+#[path = "tests/anthropic_tool_errors.rs"]
+mod anthropic_tool_errors;
 #[path = "tests/http_retries.rs"]
 mod http_retries;
 #[path = "tests/iteration_behavior.rs"]

@@ -345,25 +345,24 @@ fn execute_tool_batch_serial(
             &call.tool_id,
             input_value,
         ) {
-            Ok(exec) => exec,
-            Err(error) => {
-                if inputs.observability.is_some() {
-                    tool_span.mark_error(error.to_string());
-                    tool_span.end();
-                }
-                return Err(error);
+            Ok(exec) => {
+                let terminate = extract_terminate(&exec.output.metadata);
+                let output = if exec.output.stderr.is_empty() {
+                    exec.output.stdout
+                } else if exec.output.stdout.is_empty() {
+                    exec.output.stderr
+                } else {
+                    format!("{}\n{}", exec.output.stdout, exec.output.stderr)
+                };
+                (output, exec.success, terminate)
             }
+            Err(error) => (format!("Tool execution failed: {error}"), false, false),
         };
-        let terminate = extract_terminate(&execution.output.metadata);
-        let raw_output = if execution.output.stderr.is_empty() {
-            execution.output.stdout
-        } else if execution.output.stdout.is_empty() {
-            execution.output.stderr
-        } else {
-            format!("{}\n{}", execution.output.stdout, execution.output.stderr)
-        };
-        let output_text =
-            process_tool_result(&raw_output, MAX_TOOL_RESULT_CHARS, &inputs.state.session.id);
+        let output_text = process_tool_result(
+            &execution.0,
+            MAX_TOOL_RESULT_CHARS,
+            &inputs.state.session.id,
+        );
         if inputs.observability.is_some() {
             tool_span.set_content(
                 puffer_observability::LANGFUSE_OBSERVATION_OUTPUT,
@@ -372,8 +371,8 @@ fn execute_tool_batch_serial(
                 },
                 &output_text,
             );
-            tool_span.set_str("puffer.tool.success", execution.success.to_string());
-            if !execution.success {
+            tool_span.set_str("puffer.tool.success", execution.1.to_string());
+            if !execution.1 {
                 tool_span.mark_error("tool_failed".to_string());
             }
             tool_span.end();
@@ -383,8 +382,8 @@ fn execute_tool_batch_serial(
             tool_id: call.tool_id.clone(),
             input: call.input.clone(),
             output: output_text,
-            success: execution.success,
-            terminate,
+            success: execution.1,
+            terminate: execution.2,
         });
     }
 
