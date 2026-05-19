@@ -84,6 +84,13 @@
   const NODE_H = 76;
   const PAD_L = 18;
   const PAD_T = 22;
+  const LOCAL_DRAFT_KEY = "corbina.pipelineDraft.v1";
+
+  type LocalDraft = {
+    workflows: EditableWorkflow[];
+    workflowSlug: string;
+    selectedNodeId: string | null;
+  };
 
   let { workspaceRoot = "" }: Props = $props();
 
@@ -168,6 +175,53 @@
 
   function starterWorkingDir(): string {
     return workspaceRoot?.trim() || "";
+  }
+
+  function readLocalDraft(): LocalDraft | null {
+    if (typeof window === "undefined") return null;
+    try {
+      const raw = window.localStorage.getItem(LOCAL_DRAFT_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as Partial<LocalDraft>;
+      if (!Array.isArray(parsed.workflows) || parsed.workflows.length === 0) return null;
+      return {
+        workflows: parsed.workflows.map((item) => editableFromWorkflow(item as WorkflowDefinition)),
+        workflowSlug: typeof parsed.workflowSlug === "string" ? parsed.workflowSlug : parsed.workflows[0]?.slug ?? "agent-review-pipeline",
+        selectedNodeId: typeof parsed.selectedNodeId === "string" ? parsed.selectedNodeId : null
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  function writeLocalDraft() {
+    if (typeof window === "undefined" || !usingStarterDraft || editorWorkflows.length === 0) return;
+    window.localStorage.setItem(
+      LOCAL_DRAFT_KEY,
+      JSON.stringify({
+        workflows: editorWorkflows,
+        workflowSlug,
+        selectedNodeId
+      })
+    );
+  }
+
+  function currentLocalDraft(): LocalDraft | null {
+    if (!usingStarterDraft || editorWorkflows.length === 0) return readLocalDraft();
+    return {
+      workflows: JSON.parse(JSON.stringify(editorWorkflows)) as EditableWorkflow[],
+      workflowSlug,
+      selectedNodeId
+    };
+  }
+
+  function applyLocalDraft(draft: LocalDraft | null) {
+    const workflows = draft?.workflows.length ? draft.workflows : [starterWorkflow()];
+    editorWorkflows = workflows;
+    workflowSlug = draft?.workflowSlug && workflows.some((item) => item.slug === draft.workflowSlug)
+      ? draft.workflowSlug
+      : workflows[0]?.slug ?? "agent-review-pipeline";
+    selectedNodeId = draft?.selectedNodeId ?? workflows[0]?.pipeline.nodes[0]?.id ?? null;
   }
 
   function editableFromWorkflow(item: WorkflowDefinition): EditableWorkflow {
@@ -265,7 +319,16 @@
     });
   });
 
+  $effect(() => {
+    editorWorkflows;
+    workflowSlug;
+    selectedNodeId;
+    usingStarterDraft;
+    writeLocalDraft();
+  });
+
   async function refresh() {
+    const draftBeforeRefresh = currentLocalDraft();
     loading = true;
     error = null;
     try {
@@ -275,7 +338,11 @@
         runs: [...next.runs].sort((a, b) => b.idx - a.idx)
       };
       usingStarterDraft = next.workflows.length === 0;
-      editorWorkflows = next.workflows.length > 0 ? next.workflows.map(editableFromWorkflow) : [starterWorkflow()];
+      if (next.workflows.length > 0) {
+        editorWorkflows = next.workflows.map(editableFromWorkflow);
+      } else {
+        applyLocalDraft(draftBeforeRefresh ?? readLocalDraft());
+      }
       if (!workflowSlug || !editorWorkflows.some((item) => item.slug === workflowSlug)) {
         workflowSlug = editorWorkflows[0]?.slug ?? "agent-review-pipeline";
       }
@@ -283,9 +350,7 @@
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
       usingStarterDraft = true;
-      editorWorkflows = [starterWorkflow()];
-      workflowSlug = editorWorkflows[0].slug;
-      selectedNodeId = editorWorkflows[0].pipeline.nodes[0]?.id ?? null;
+      applyLocalDraft(draftBeforeRefresh ?? readLocalDraft());
     } finally {
       loading = false;
       setTimeout(measure, 0);

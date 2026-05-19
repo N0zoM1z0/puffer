@@ -12,3 +12,39 @@ test("starter workflow uses the connected workspace as working directory", async
   await expect(page.getByLabel("Working directory")).toHaveValue("/tmp/puffer-workspace");
   await expect(page.getByLabel("Working directory")).not.toHaveValue("/Users/shou/corbina");
 });
+
+test("local workflow draft survives main tab switches", async ({ page }) => {
+  const daemon = new FakeDaemon({ workspaceRoot: "/tmp/puffer-workspace" });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: "Pipelines" }).click();
+  await daemon.waitForRequest("workflow_list");
+  const pipelineName = page.locator(".pf-editor-config").getByLabel("Name");
+  await pipelineName.fill("Navigation-safe draft");
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("button", { name: "Pipelines" }).click();
+
+  await expect(page.locator(".pf-editor-config").getByLabel("Name")).toHaveValue("Navigation-safe draft");
+});
+
+test("local workflow draft survives failed refresh", async ({ page }) => {
+  const daemon = new FakeDaemon({ workspaceRoot: "/tmp/puffer-workspace" });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: "Pipelines" }).click();
+  await daemon.waitForRequest("workflow_list");
+  const pipelineName = page.locator(".pf-editor-config").getByLabel("Name");
+  await pipelineName.fill("Refresh-safe draft");
+
+  const workflowRequests = daemon.requests.filter((request) => request.method === "workflow_list").length;
+  daemon.failNext("workflow_list", "workflow list unavailable");
+  await page.getByRole("button", { name: "Refresh" }).click();
+
+  await expect.poll(() =>
+    daemon.requests.filter((request) => request.method === "workflow_list").length
+  ).toBe(workflowRequests + 1);
+  await expect(page.locator(".pf-editor-config").getByLabel("Name")).toHaveValue("Refresh-safe draft");
+});
