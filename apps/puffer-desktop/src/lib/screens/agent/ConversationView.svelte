@@ -473,13 +473,14 @@
   });
 
   async function submit() {
+    const submittedDraft = draft;
     const v = draft.trim();
     if (!v || !canSubmitPrompt) return;
     submitInFlight = true;
     try {
       const accepted = await onSubmitMessage(v, composerOptions());
       if (accepted === false) return;
-      draft = "";
+      if (draft === submittedDraft) draft = "";
       await tick();
       threadEl?.scrollTo({ top: threadEl.scrollHeight, behavior: "smooth" });
     } finally {

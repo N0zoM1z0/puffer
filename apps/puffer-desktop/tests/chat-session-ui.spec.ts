@@ -290,6 +290,47 @@ test("failed turn start keeps composer draft and avoids an unsent user row", asy
   await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
 });
 
+test("successful delayed turn start preserves a newer composer draft", async ({ page }) => {
+  const daemon = new FakeDaemon({
+    sessions: [
+      {
+        sessionId: "session-composer-race",
+        displayName: "Composer race",
+        title: "Composer race",
+        cwd: "/tmp/puffer",
+        folderPath: "/tmp/puffer",
+        updatedAtMs: baseTime,
+        createdAtMs: baseTime - 60_000,
+        eventCount: 0,
+        timeline: []
+      }
+    ]
+  });
+  daemon.delayResponse(
+    "run_agent_turn",
+    (request) => request.params.sessionId === "session-composer-race",
+    220
+  );
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openSession(page, /Composer race/);
+  const composer = page.locator(".pf-composer textarea");
+  await composer.fill("first prompt");
+  await page.getByRole("button", { name: "Send" }).click();
+  await daemon.waitForRequest(
+    "run_agent_turn",
+    (request) =>
+      request.params.sessionId === "session-composer-race" &&
+      request.params.message === "first prompt"
+  );
+
+  await composer.fill("second draft");
+
+  await expect(page.getByRole("button", { name: "Stop turn" })).toBeVisible();
+  await expect(composer).toHaveValue("second draft");
+});
+
 test("unsent composer draft clears when switching sessions", async ({ page }) => {
   const daemon = new FakeDaemon({
     sessions: [
