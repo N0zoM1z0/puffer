@@ -211,6 +211,43 @@ test("Files tab clears saving state after switching tabs during save", async ({ 
   await expect(save).toBeEnabled();
 });
 
+test("Files tab can save another dirty file while a prior file save is pending", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  daemon.delayResponse(
+    "write_file",
+    (request) => request.params.path === "/tmp/puffer/src/main.rs",
+    3_000
+  );
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openRegressionAgent(page);
+  await openFilesPanel(page);
+
+  const editor = page.getByLabel("Edit file contents");
+  await expect(editor).toHaveValue("fn main() {}\n");
+  await editor.fill("fn main() {\n    println!(\"pending\");\n}\n");
+  await page.getByRole("button", { name: "Save" }).click();
+  await daemon.waitForRequest(
+    "write_file",
+    (candidate) => candidate.params.path === "/tmp/puffer/src/main.rs"
+  );
+
+  await page.getByRole("tab", { name: /lib\.rs/ }).click();
+  await expect(editor).toHaveValue("pub fn fixture() {}\n");
+  const libDraft = "pub fn fixture() {\n    println!(\"independent\");\n}\n";
+  await editor.fill(libDraft);
+
+  const save = page.getByRole("button", { name: "Save" });
+  await expect(save).toBeEnabled({ timeout: 250 });
+  await save.click();
+  const request = await daemon.waitForRequest(
+    "write_file",
+    (candidate) => candidate.params.path === "/tmp/puffer/src/lib.rs"
+  );
+  expect(request.params.content).toBe(libDraft);
+});
+
 test("Files tab opens symbol context from the editor cursor", async ({ page }) => {
   const daemon = new FakeDaemon();
   await daemon.install(page);

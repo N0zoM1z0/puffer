@@ -54,7 +54,7 @@
   let activeLoading = $state(false);
   let activeError = $state<string | null>(null);
   let draftContent = $state("");
-  let saving = $state(false);
+  let savingPaths = $state<Set<string>>(new Set());
   let saveError = $state<string | null>(null);
   let selectedSymbol = $state<string | null>(null);
   let lspLoading = $state(false);
@@ -97,7 +97,7 @@
       activeError = null;
       activeSize = 0;
       draftContent = "";
-      saving = false;
+      savingPaths = new Set();
       saveError = null;
       clearLspState();
       void loadDir(next);
@@ -610,6 +610,7 @@
     !!activeFile && activeFile.encoding === "utf8" && !activeFile.truncated && !activeLoading
   );
   let dirty = $derived(activePath ? isTabDirty(activePath) : false);
+  let activeSaving = $derived(activePath ? savingPaths.has(activePath) : false);
 
   function cancelEditing() {
     draftContent = activeFile?.encoding === "utf8" ? activeFile.content : "";
@@ -619,8 +620,8 @@
 
   async function saveEditing() {
     const target = activePath;
-    if (!target || !dirty || saving) return;
-    saving = true;
+    if (!target || !dirty || savingPaths.has(target)) return;
+    savingPaths = new Set([...savingPaths, target]);
     saveError = null;
     const submittedContent = draftContent;
     try {
@@ -637,7 +638,9 @@
         saveError = err instanceof Error ? err.message : String(err);
       }
     } finally {
-      saving = false;
+      const nextSaving = new Set(savingPaths);
+      nextSaving.delete(target);
+      savingPaths = nextSaving;
     }
   }
 
@@ -1075,7 +1078,7 @@
               type="button"
               class="file-action"
               onclick={cancelEditing}
-              disabled={saving}
+              disabled={activeSaving}
             >
               Cancel
             </button>
@@ -1083,9 +1086,9 @@
               type="button"
               class="file-action primary"
               onclick={() => void saveEditing()}
-              disabled={saving || !dirty}
+              disabled={activeSaving || !dirty}
             >
-              {saving ? "Saving..." : "Save"}
+              {activeSaving ? "Saving..." : "Save"}
             </button>
           {/if}
         </div>
