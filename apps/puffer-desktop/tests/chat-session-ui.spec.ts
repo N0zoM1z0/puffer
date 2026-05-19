@@ -87,6 +87,72 @@ test("turn completion reload does not leak live chat into a newly selected sessi
   await expect(page.getByText("Race from alpha")).toHaveCount(0);
 });
 
+test("delayed turn start does not mark a newly selected session as running", async ({ page }) => {
+  const daemon = new FakeDaemon({
+    sessions: [
+      {
+        sessionId: "session-alpha",
+        displayName: "Alpha session",
+        title: "Alpha session",
+        cwd: "/tmp/puffer",
+        folderPath: "/tmp/puffer",
+        updatedAtMs: baseTime,
+        createdAtMs: baseTime - 60_000,
+        eventCount: 1,
+        timeline: [
+          {
+            kind: "assistant_message",
+            id: "alpha-seed",
+            text: "Alpha seed",
+            createdAtMs: baseTime - 30_000
+          }
+        ]
+      },
+      {
+        sessionId: "session-beta",
+        displayName: "Beta session",
+        title: "Beta session",
+        cwd: "/tmp/puffer",
+        folderPath: "/tmp/puffer",
+        updatedAtMs: baseTime - 1_000,
+        createdAtMs: baseTime - 120_000,
+        eventCount: 1,
+        timeline: [
+          {
+            kind: "assistant_message",
+            id: "beta-seed",
+            text: "Beta seed",
+            createdAtMs: baseTime - 90_000
+          }
+        ]
+      }
+    ]
+  });
+  daemon.delayResponse(
+    "run_agent_turn",
+    (request) => request.params.sessionId === "session-alpha",
+    180
+  );
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openSession(page, /Alpha session/);
+  await page.locator(".pf-composer textarea").fill("Delayed alpha turn");
+  await page.getByRole("button", { name: "Send" }).click();
+  await daemon.waitForRequest(
+    "run_agent_turn",
+    (request) =>
+      request.params.sessionId === "session-alpha" &&
+      request.params.message === "Delayed alpha turn"
+  );
+
+  await openSession(page, /Beta session/);
+  await expect(page.getByText("Beta seed")).toBeVisible();
+  await page.waitForTimeout(240);
+  await expect(page.getByRole("button", { name: "Stop turn" })).toHaveCount(0);
+  await expect(page.getByText("Delayed alpha turn")).toHaveCount(0);
+});
+
 test("turn completion preserves live chat row identity after transcript reload", async ({ page }) => {
   const prompt = "Keep this row stable";
   const reply = "Stable streamed reply is visible.";

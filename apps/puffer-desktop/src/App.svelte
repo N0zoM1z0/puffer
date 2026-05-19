@@ -1073,6 +1073,12 @@
       statusMessage = "Select a session to send a message.";
       return false;
     }
+    if (turnRunning) {
+      statusMessage = "Wait for the current agent turn to finish before sending another message.";
+      return false;
+    }
+    const originSessionId = selectedSession.id;
+    const originLoadGeneration = sessionLoadGeneration;
     const requestedProviderId =
       options.providerId ?? selectedSession.providerId ?? settingsSnapshot?.config.defaultProvider;
     if (!providerIsAuthenticated(requestedProviderId)) {
@@ -1086,7 +1092,10 @@
     turnThinking = true;
     turnStatusHint = "Thinking";
     try {
-      const turnId = await runAgentTurn(selectedSession.id, message, options);
+      const turnId = await runAgentTurn(originSessionId, message, options);
+      if (selectedSession?.id !== originSessionId || sessionLoadGeneration !== originLoadGeneration) {
+        return true;
+      }
       currentTurnId = turnId;
       settledTurnIds.delete(turnId);
       submittedMessages = [
@@ -1103,6 +1112,9 @@
       statusMessage = `Agent turn ${turnId.slice(0, 8)} started.`;
       return true;
     } catch (error) {
+      if (selectedSession?.id !== originSessionId || sessionLoadGeneration !== originLoadGeneration) {
+        return false;
+      }
       currentTurnId = null;
       turnStartedAtMs = null;
       turnThinking = false;
