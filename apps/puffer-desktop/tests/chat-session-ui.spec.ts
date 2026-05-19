@@ -831,6 +831,93 @@ test("composer controls handle provider-prefixed session model ids", async ({ pa
   });
 });
 
+test("legacy Codex session resolves to OpenAI daemon provider for models and turns", async ({ page }) => {
+  const daemon = new FakeDaemon({
+    auth: [
+      {
+        providerId: "openai",
+        kind: "api_key",
+        email: null,
+        expiresAtMs: null,
+        scopes: [],
+        planType: null,
+        organizationName: null
+      }
+    ],
+    providers: [
+      {
+        id: "openai",
+        displayName: "OpenAI",
+        baseUrl: "",
+        defaultApi: "openai-responses",
+        modelCount: 1,
+        authModes: ["api_key"],
+        sourceKind: "test",
+        sourcePath: null
+      }
+    ],
+    sessions: [
+      {
+        sessionId: "session-legacy-codex",
+        displayName: "Legacy Codex",
+        title: "Legacy Codex",
+        cwd: "/tmp/puffer",
+        folderPath: "/tmp/puffer",
+        updatedAtMs: baseTime,
+        createdAtMs: baseTime - 60_000,
+        eventCount: 0,
+        providerId: "codex",
+        modelId: "gpt-5",
+        timeline: []
+      }
+    ],
+    providerModels: {
+      openai: [
+        {
+          id: "gpt-5",
+          displayName: "GPT-5",
+          provider: "openai",
+          api: "openai-responses",
+          contextWindow: 128000,
+          maxOutputTokens: 4096,
+          supportsReasoning: true,
+          thinkingOptions: [
+            {
+              id: "low",
+              label: "Low",
+              description: "Use low reasoning effort.",
+              isDefault: true
+            }
+          ],
+          defaultThinkingOptionId: "low",
+          isDefault: true
+        }
+      ]
+    }
+  });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openSession(page, /Legacy Codex/);
+  await page.locator(".pf-composer .trigger").click();
+  await expect(page.locator(".pf-composer .menu").getByRole("option", { name: /GPT-5/ })).toBeVisible();
+
+  const thinkingSelect = page.getByLabel("Thinking level");
+  await expect(thinkingSelect).toBeEnabled();
+  await page.locator(".pf-composer textarea").fill("Use legacy alias");
+  await page.getByRole("button", { name: "Send" }).click();
+
+  const request = await daemon.waitForRequest(
+    "run_agent_turn",
+    (item) => item.params.message === "Use legacy alias"
+  );
+  expect(request.params).toMatchObject({
+    providerId: "openai",
+    modelId: "gpt-5",
+    thinkingOptionId: "low"
+  });
+});
+
 test("model picker ignores stale provider selection responses", async ({ page }) => {
   const daemon = new FakeDaemon({
     auth: [

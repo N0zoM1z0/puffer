@@ -29,7 +29,8 @@
   } from "../../api/desktop";
   import {
     canonicalDaemonProviderId,
-    providerIdInSet
+    providerIdInSet,
+    providerIdsEquivalent
   } from "../../providerIds";
 
   const ENGINEER_NAME = "Engineer";
@@ -180,6 +181,15 @@
       .join(" ") || "Codex";
   }
 
+  function resolvedProviderId(providerId: string | null | undefined): string | null {
+    const trimmed = providerId?.trim();
+    if (!trimmed) return null;
+    const provider = settingsSnapshot?.providers?.find((entry) =>
+      providerIdsEquivalent(entry.id, trimmed)
+    );
+    return provider?.id ?? trimmed;
+  }
+
   function normalizePermissionMode(value: string | null): AgentPermissionMode {
     if (value === "read-only" || value === "workspace-write" || value === "full-access") {
       return value;
@@ -189,7 +199,7 @@
 
   function composerOptions(): AgentTurnOptions {
     return {
-      providerId: selectedProviderId,
+      providerId: resolvedProviderId(selectedProviderId),
       modelId: selectedModelId,
       thinkingOptionId: thinkingAvailable ? selectedThinkingOptionId || null : null,
       fastMode: fastModeAvailable && fastMode,
@@ -413,9 +423,10 @@
       thinkingModels = [];
       return;
     }
+    const requestProviderId = resolvedProviderId(providerId) ?? providerId;
     let canceled = false;
     thinkingLoadError = null;
-    void listProviderModels(providerId)
+    void listProviderModels(requestProviderId)
       .then((models) => {
         if (canceled) return;
         thinkingProviderId = providerId;
