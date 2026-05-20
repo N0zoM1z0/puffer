@@ -1,0 +1,66 @@
+You are testing Puffer desktop UI/UX with the local fuzz framework.
+
+Repo: /dsk/hdd/home/llmft/Riema/puffer
+
+Rules:
+- Do not patch product code.
+- Do not commit or push.
+- Use the local `fuzz/` framework and follow its docs/instructions.
+- Count only real, user-visible UI/UX bugs triggered by click, type, keyboard, resize, reconnect, stale daemon event, or response ordering.
+- Do not count fixture-only, environment-only, or tooling-only failures.
+- Focus priority: chat/session/new agent/turn/reload core loop first; then workspace/session switching/provider/model flows; then Files/Terminal/Browser.
+- Use fake daemon unless the framework explicitly says otherwise.
+- Clean up temporary replay specs before finishing.
+
+Workflow:
+1. Read `fuzz/README.md`, `fuzz/agent_guide.md`, and `fuzz/playwright_adapter.md`.
+2. Run:
+   `node fuzz/bin/puffer-fuzz.mjs validate`
+3. Generate a frontier/plan:
+   `node fuzz/bin/puffer-fuzz.mjs frontier --out /tmp/puffer-fuzz-frontier.md`
+   `node fuzz/bin/puffer-fuzz.mjs plan --profile core --out /tmp/puffer-fuzz-plan.md`
+4. Pick high-priority core seeds first. Start with:
+   - `chat-turn-race`
+   - `workspace-session-race`
+   - `provider-auth-model-race`
+   - `modal-focus-race`
+5. For each selected seed, run:
+   `node fuzz/bin/puffer-fuzz.mjs run --seed <seed> --iterations 30 --steps <seed-appropriate-steps> --rng-seed <unique-run-name> --out /tmp/puffer-fuzz-<seed>.json`
+   `node fuzz/bin/puffer-fuzz.mjs report --input /tmp/puffer-fuzz-<seed>.json --out /tmp/puffer-fuzz-<seed>.md`
+6. Pick the highest-value replay cases from the report, especially cases covering stale events, reconnects, duplicate submits, pending state, session switching, modal focus, or provider/model mismatches.
+7. Generate temporary Playwright replay specs:
+   `node fuzz/bin/puffer-fuzz.mjs replay --input /tmp/puffer-fuzz-<seed>.json --case-id <case-id> --out apps/puffer-desktop/tests/<case-id>.tmp.spec.ts`
+8. Run replay specs:
+   `cd apps/puffer-desktop && npx playwright test tests/<case-id>.tmp.spec.ts --workers=1 --reporter=list`
+9. If a replay fails, rerun it at least 2 more times to check stability.
+10. Shrink the repro mentally or by creating a smaller temporary probe only if needed. Do not leave temporary specs in the repo.
+
+For every accepted bug, write a detailed finding with:
+- Title
+- Severity estimate: P0/P1/P2
+- Area/component
+- Seed and replay case ID
+- Trigger steps
+- Expected behavior
+- Actual behavior
+- User impact
+- Why this is a product bug and not fixture/environment/tooling
+- Stability: how many times reproduced
+- Relevant source files/components likely involved
+- Suggested regression test target
+- Any screenshots/error-context paths if generated
+
+At the end:
+- Write the full report to `/tmp/puffer_fuzz_findings.md`.
+- If you create any temporary specs under `apps/puffer-desktop/tests/*tmp*.spec.ts`, remove them before finishing.
+- Leave generated `/tmp/puffer-fuzz-*.json` and `/tmp/puffer-fuzz-*.md` artifacts for review.
+- Do not modify product code.
+- Do not commit or push.
+
+Final answer should summarize:
+- Commands run
+- Seeds tested
+- Replay cases tested
+- Confirmed real findings
+- Rejected false positives and why
+- Remaining coverage gaps

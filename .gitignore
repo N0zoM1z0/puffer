@@ -23,3 +23,10 @@ env.txt
 audits/
 bugs/
 test-results/
+
+# Local UI/UX fuzz and AgentFlow runtime artifacts.
+.agentflow/
+fuzz/__pycache__/
+fuzz/**/*.pyc
+apps/puffer-desktop/tests/*.tmp.spec.ts
+apps/puffer-desktop/tests/*race.replay.spec.ts

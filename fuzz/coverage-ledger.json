@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "validatedTags": [],
+  "replayedCases": [],
+  "fixedFindings": [],
+  "knownBugSignatures": [],
+  "metrics": {
+    "replaySuccessRate": 0,
+    "duplicateReportRate": 0,
+    "flakeRate": 0,
+    "falsePositiveRate": 0,
+    "p0Open": 0,
+    "p1Open": 0
+  },
+  "notes": [
+    "Add tags here only after a generated case has been replayed or represented by a deterministic regression."
+  ]
+}
