@@ -1201,6 +1201,7 @@ export type ReadFileResult = {
   size: number;
   truncated: boolean;
   textPreview?: string[];
+  htmlPreview?: string;
 };
 
 export type FileTabStateItem = {
