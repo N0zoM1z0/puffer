@@ -1447,6 +1447,7 @@
       class:active={showDevtools}
       type="button"
       title="DevTools"
+      aria-pressed={showDevtools}
       disabled={!activeTab}
       onclick={() => (showDevtools = !showDevtools)}
     >
@@ -1493,11 +1494,13 @@
             <button
               type="button"
               class:active={devtoolsView === "console"}
+              aria-pressed={devtoolsView === "console"}
               onclick={() => (devtoolsView = "console")}
             >Console</button>
             <button
               type="button"
               class:active={devtoolsView === "network"}
+              aria-pressed={devtoolsView === "network"}
               onclick={() => (devtoolsView = "network")}
             >Network</button>
           </div>
