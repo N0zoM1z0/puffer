@@ -876,7 +876,6 @@ mod tests {
     #[test]
     fn project_memory_path_uses_registered_project_memory_file() {
         let _guard = env_lock().lock().unwrap();
-        let old_home = std::env::var_os("PUFFER_HOME");
         let temp = tempdir().unwrap();
         let home = temp.path().join("home");
         let workspace = temp.path().join("workspace");
@@ -884,7 +883,7 @@ mod tests {
         let cwd = project_root.join("src");
         std::fs::create_dir_all(&home).unwrap();
         std::fs::create_dir_all(&cwd).unwrap();
-        std::env::set_var("PUFFER_HOME", &home);
+        let _home = puffer_config::set_puffer_home_override(&home);
 
         let paths = ConfigPaths::discover(&workspace);
         ensure_workspace_dirs(&paths).unwrap();
@@ -904,12 +903,6 @@ mod tests {
         let path = memory_file_path(&state, MemoryScope::Project).expect("project memory path");
         assert!(path.ends_with("MEMORY.md"));
         assert!(path.starts_with(paths.projects_memory_dir()));
-
-        if let Some(value) = old_home {
-            std::env::set_var("PUFFER_HOME", value);
-        } else {
-            std::env::remove_var("PUFFER_HOME");
-        }
     }
 }
 
