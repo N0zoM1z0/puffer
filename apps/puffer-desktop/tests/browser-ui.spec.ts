@@ -105,3 +105,30 @@ test("Address bar updates when switching tabs even if previously focused", async
   // After opening a new tab, the address bar should show the new tab's URL
   await expect(addressBar).toHaveValue("about:blank");
 });
+
+test("New browser tab ignores repeated clicks while open is in flight", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openBrowserAgent(page);
+  await openBrowserPane(page, daemon);
+
+  daemon.delayResponse(
+    "browser_agent",
+    (request) => request.params.action === "open" && request.params.tabId === "tab-2",
+    500
+  );
+
+  const addTab = page.getByRole("button", { name: "New tab" });
+  await addTab.click();
+  await addTab.click({ force: true });
+
+  await page.waitForTimeout(50);
+
+  const opens = daemon.requests.filter(
+    (request) => request.method === "browser_agent" && request.params.action === "open"
+  );
+  expect(opens).toHaveLength(1);
+  await expect(addTab).toBeDisabled();
+});
