@@ -117,11 +117,9 @@ test("Status bar shows loading state on reload", async ({ page }) => {
   const statusBar = page.locator(".pf-browser-status");
   await expect(statusBar).toContainText("Connected");
 
-  // Click the reload button
   await page.locator("button[title='Reload']").click();
   await daemon.waitForRequest("browser_reload");
 
-  // The status bar should show "Loading"
   await expect(statusBar).toContainText("Loading");
 });
 
@@ -136,11 +134,9 @@ test("Status bar shows loading state on back/forward navigation", async ({ page 
   const statusBar = page.locator(".pf-browser-status");
   await expect(statusBar).toContainText("Connected");
 
-  // Click the back button
   await page.locator("button[title='Back']").click();
   await daemon.waitForRequest("browser_history");
 
-  // The status bar should show "Loading"
   await expect(statusBar).toContainText("Loading");
 });
 

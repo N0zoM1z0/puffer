@@ -2,9 +2,11 @@
   import { onDestroy, tick, untrack } from "svelte";
   import HighlightedLine from "../../components/HighlightedLine.svelte";
   import Icon from "../../design/Icon.svelte";
+  import PdfDocumentPreview from "./PdfDocumentPreview.svelte";
   import {
     buildFilePreview,
     hasRichFilePreview,
+    hasRichFilePreviewPath,
     type FilePreview
   } from "./filePreview";
   import {
@@ -52,6 +54,8 @@
     line?: number | null;
     character?: number | null;
   };
+
+  const RICH_PREVIEW_MAX_BYTES = 24 * 1024 * 1024;
 
   // Directory cache: absolute path → its (already-loaded) entries. Keeps
   // the tree interactions snappy across expand/collapse cycles and lets
@@ -326,7 +330,7 @@
     const expectedSessionId = sessionId;
     const generation = fileReadGeneration;
     try {
-      const result = await readFile(target);
+      const result = await readPreviewFile(target);
       if (
         generation === fileReadGeneration &&
         activePath === target &&
@@ -411,6 +415,19 @@
 
   function fileName(path: string): string {
     return path.split("/").pop() || path;
+  }
+
+  function fileTabPathLabel(path: string): string {
+    if (root && path.startsWith(`${root}/`)) return path.slice(root.length + 1);
+    return path || "file";
+  }
+
+  function closeFileTabLabel(path: string): string {
+    return `Close ${fileTabPathLabel(path)}`;
+  }
+
+  function readPreviewFile(path: string): Promise<ReadFileResult> {
+    return readFile(path, hasRichFilePreviewPath(path) ? RICH_PREVIEW_MAX_BYTES : undefined);
   }
 
   function tabFor(path: string, size: number, pinned: boolean): OpenFileTab {
@@ -637,7 +654,7 @@
     activeLoading = true;
     let loaded = false;
     try {
-      const result = await readFile(path);
+      const result = await readPreviewFile(path);
       if (
         generation === fileReadGeneration &&
         activePath === path &&
@@ -1158,7 +1175,7 @@
       {#if previewMode}
         <div class="tree-empty">
           <div class="msg">Files view is live in the desktop app</div>
-          <div class="sub">Launch Corbina locally to browse this session's working directory.</div>
+          <div class="sub">Launch Puffer locally to browse this session's working directory.</div>
         </div>
       {:else if errors.has(root) && !cache.has(root)}
         <div class="tree-empty">
@@ -1185,6 +1202,7 @@
               event.preventDefault();
               void openFile(row.path, row.size, { pinned: true });
             }}
+            aria-expanded={row.kind === "directory" || row.kind === "symlink" ? expanded.has(row.path) : undefined}
             title={row.path}
           >
             {#if row.kind === "directory"}
@@ -1230,7 +1248,7 @@
       <div class="viewer-empty">
         <Icon name="file" size={20} color="var(--muted-foreground)" />
         <div class="title">File preview is live in the desktop app</div>
-        <div class="sub">Open Corbina locally to preview files from this session.</div>
+        <div class="sub">Open Puffer locally to preview files from this session.</div>
       </div>
     {:else if !activePath}
       <div class="viewer-empty">
@@ -1241,6 +1259,7 @@
     {:else}
       <div class="file-tabs" role="tablist" aria-label="Open files">
         {#each openTabs as tab (tab.path)}
+          {@const closeLabel = closeFileTabLabel(tab.path)}
           <div
             role="tab"
             tabindex="0"
@@ -1262,7 +1281,8 @@
             <button
               type="button"
               class="tab-close"
-              aria-label="Close {tab.name}"
+              aria-label={closeLabel}
+              title={closeLabel}
               onclick={(event) => void closeTab(event, tab.path)}
             >
               <Icon name="x" size={11} />
@@ -1378,14 +1398,7 @@
           </div>
         {:else if activePreview && activePreview.kind === "pdf"}
           <div class="file-preview pdf-shell" aria-label="PDF preview">
-            <object
-              class="pdf-preview"
-              data={activePreview.dataUrl}
-              type="application/pdf"
-              aria-label="PDF document"
-            >
-              <div class="viewer-msg">PDF preview is unavailable in this WebView.</div>
-            </object>
+            <PdfDocumentPreview base64={activePreview.base64} textLines={activePreview.lines} />
           </div>
         {:else if activePreview && activePreview.kind === "docx"}
           <article class="file-preview office-preview" aria-label="DOCX preview">
@@ -1427,7 +1440,13 @@
           <div class="file-preview office-preview" aria-label={activePreview.title}>
             <section>
               <h2>{activePreview.title}</h2>
-              <p>{activePreview.message}</p>
+              {#if activePreview.html}
+                <div class="legacy-office-html">{@html activePreview.html}</div>
+              {:else}
+                {#each activePreview.lines as line}
+                  <p>{line}</p>
+                {/each}
+              {/if}
             </section>
           </div>
         {:else if activeFile && activeFile.encoding === "utf8"}
@@ -1914,16 +1933,10 @@
     font-weight: 650;
   }
   .pdf-shell {
-    padding: 0;
+    padding: 20px;
     height: 100%;
-  }
-  .pdf-preview {
-    width: 100%;
-    height: 100%;
-    min-height: 520px;
-    border: 0;
-    display: block;
-    background: var(--background);
+    overflow: auto;
+    background: color-mix(in oklab, var(--background) 94%, var(--muted));
   }
   .office-preview section,
   .spreadsheet-preview section {
@@ -1934,6 +1947,23 @@
   .office-preview section:last-child,
   .spreadsheet-preview section:last-child {
     border-bottom: 0;
+  }
+  .legacy-office-html {
+    color: var(--ink);
+  }
+  .legacy-office-html :global(p),
+  .legacy-office-html :global(div) {
+    margin: 0 0 8px;
+  }
+  .legacy-office-html :global(table) {
+    border-collapse: collapse;
+    width: 100%;
+  }
+  .legacy-office-html :global(td),
+  .legacy-office-html :global(th) {
+    border: 1px solid var(--border);
+    padding: 6px 8px;
+    vertical-align: top;
   }
   .editor-shell {
     height: 100%;

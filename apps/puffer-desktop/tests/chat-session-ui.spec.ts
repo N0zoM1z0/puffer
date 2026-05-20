@@ -2133,17 +2133,19 @@ test("failed permission responses keep the approval prompt retryable", async ({ 
   });
 
   await expect(page.getByText("Approval needed")).toBeVisible();
-  daemon.failNext("resolve_permission", "permission channel closed");
-  await page.getByRole("button", { name: "Deny" }).click();
+  daemon.delayFailure("resolve_permission", () => true, "permission channel closed", 200);
+  const deny = page.getByRole("button", { name: "Deny" });
+  await deny.click();
 
   const request = await daemon.waitForRequest("resolve_permission");
+  await expect(deny).toBeDisabled();
   expect(request.params).toMatchObject({
     turnId: "turn-permission",
     requestId: "permission-1",
     action: "deny"
   });
   await expect(page.getByText("Approval needed")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Deny" })).toBeVisible();
+  await expect(deny).toBeEnabled();
 });
 
 test("late permission response failures do not leak into a switched session", async ({ page }) => {
@@ -2275,7 +2277,7 @@ test("permission responses ignore duplicate clicks while the choice is in flight
   await expect(page.getByText("Needs a single approval.")).toBeVisible();
   const allowOnce = page.getByRole("button", { name: "Allow once" });
   await allowOnce.click();
-  await allowOnce.click();
+  await expect(allowOnce).toBeDisabled();
 
   const request = await daemon.waitForRequest("resolve_permission");
   expect(request.params).toMatchObject({
@@ -2354,10 +2356,12 @@ test("failed question responses keep the question prompt retryable", async ({ pa
 
   await expect(page.getByText("Which path should I use?")).toBeVisible();
   await page.getByPlaceholder("Type another answer").fill("examples");
-  daemon.failNext("resolve_user_question", "question channel closed");
-  await page.getByRole("button", { name: "Send answer" }).click();
+  daemon.delayFailure("resolve_user_question", () => true, "question channel closed", 200);
+  const submit = page.getByRole("button", { name: "Send answer" });
+  await submit.click();
 
   const request = await daemon.waitForRequest("resolve_user_question");
+  await expect(submit).toBeDisabled();
   expect(request.params).toMatchObject({
     turnId: "turn-question",
     requestId: "question-1",
@@ -2365,7 +2369,7 @@ test("failed question responses keep the question prompt retryable", async ({ pa
     annotations: {}
   });
   await expect(page.getByText("Which path should I use?")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Send answer" })).toBeEnabled();
+  await expect(submit).toBeEnabled();
 });
 
 test("late question response failures do not leak into a switched session", async ({ page }) => {
@@ -2483,7 +2487,7 @@ test("question responses ignore duplicate sends while the answer is in flight", 
   await page.getByPlaceholder("Type another answer").fill("examples");
   const submit = page.getByRole("button", { name: "Send answer" });
   await submit.click();
-  await submit.click();
+  await expect(submit).toBeDisabled();
 
   const request = await daemon.waitForRequest("resolve_user_question");
   expect(request.params).toMatchObject({
@@ -3100,6 +3104,104 @@ test("model picker shows pending OpenRouter state and updates chat labels", asyn
   await expect(page.getByRole("button", { name: "Send" })).toBeDisabled();
 
   await expect(picker.locator(".trigger")).toContainText("google/gemini-3.5-flash");
+  await expect(page.locator(".pf-composer textarea")).toHaveAttribute(
+    "placeholder",
+    /Engineer \(OpenRouter\)/
+  );
+});
+
+test("model picker keeps the selected provider visible when no models load", async ({ page }) => {
+  const model = (provider: string, id: string) => ({
+    id,
+    displayName: id,
+    provider,
+    api: "openai-responses",
+    supportsTools: true,
+    supportsVision: false,
+    contextWindow: null,
+    maxOutputTokens: null,
+    thinkingOptions: [],
+    defaultThinkingOptionId: null,
+    isDefault: true
+  });
+  const daemon = new FakeDaemon({
+    auth: [
+      {
+        providerId: "codex",
+        kind: "oauth",
+        email: "tester@example.com",
+        expiresAtMs: null,
+        scopes: [],
+        planType: "test",
+        organizationName: null
+      },
+      {
+        providerId: "openrouter",
+        kind: "api_key",
+        email: null,
+        expiresAtMs: null,
+        scopes: [],
+        planType: null,
+        organizationName: null
+      }
+    ],
+    providers: [
+      {
+        id: "codex",
+        displayName: "Codex",
+        baseUrl: "",
+        defaultApi: "openai-responses",
+        modelCount: 1,
+        authModes: ["oauth"],
+        sourceKind: "test",
+        sourcePath: null
+      },
+      {
+        id: "openrouter",
+        displayName: "OpenRouter",
+        baseUrl: "",
+        defaultApi: "openai-responses",
+        modelCount: 1,
+        authModes: ["api_key"],
+        sourceKind: "test",
+        sourcePath: null
+      }
+    ],
+    sessions: [
+      {
+        sessionId: "session-openrouter-empty-models",
+        displayName: "OpenRouter empty models",
+        title: "OpenRouter empty models",
+        cwd: "/tmp/puffer",
+        folderPath: "/tmp/puffer",
+        updatedAtMs: baseTime,
+        createdAtMs: baseTime - 60_000,
+        eventCount: 0,
+        providerId: "codex",
+        modelId: "codex-default",
+        timeline: []
+      }
+    ],
+    providerModels: {
+      codex: [model("codex", "codex-default")],
+      openrouter: []
+    }
+  });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openSession(page, /OpenRouter empty models/);
+  const picker = page.locator(".pf-composer .picker");
+  await picker.locator(".trigger").click();
+  await picker.getByRole("button", { name: "OpenRouter", exact: true }).click();
+  await daemon.waitForRequest(
+    "list_provider_models",
+    (request) => request.params.providerId === "openrouter"
+  );
+
+  await expect(picker.locator(".trigger")).toContainText("Pick model");
+  await expect(picker.locator(".trigger")).toContainText("OpenRouter");
+  await expect(picker.getByText("No OpenRouter models available.")).toBeVisible();
   await expect(page.locator(".pf-composer textarea")).toHaveAttribute(
     "placeholder",
     /Engineer \(OpenRouter\)/

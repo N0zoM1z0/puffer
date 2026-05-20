@@ -160,16 +160,31 @@ test("Diff tab reconciles agent edits with git changes", async ({ page }) => {
   await daemon.open(page);
 
   await openAgent(page, /Agent detail/);
-  await page.locator(".pf-agent-tabs").getByRole("button", { name: /Diff/ }).click();
+  const mainTabs = page.locator(".pf-agent-tabs");
+  await expect(mainTabs.getByRole("button", { name: "Chat", exact: true })).toHaveAttribute("type", "button");
+  await expect(mainTabs.getByRole("button", { name: "Chat", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(mainTabs.getByRole("button", { name: /Diff/ })).toHaveAttribute("aria-pressed", "false");
+
+  await mainTabs.getByRole("button", { name: /Diff/ }).click();
+  await expect(mainTabs.getByRole("button", { name: "Chat", exact: true })).toHaveAttribute("aria-pressed", "false");
+  await expect(mainTabs.getByRole("button", { name: /Diff/ })).toHaveAttribute("aria-pressed", "true");
 
   await expect(page.getByText("src/agent.rs").first()).toBeVisible();
   await expect(page.getByText("new needle agent note")).toBeVisible();
 
-  await page.locator(".diff-subtabs").getByRole("button").nth(1).click();
+  const diffSubtabs = page.locator(".diff-subtabs");
+  await expect(diffSubtabs.getByRole("button", { name: /Agent/ }).first()).toHaveAttribute("type", "button");
+  await expect(diffSubtabs.getByRole("button", { name: /Agent/ }).first()).toHaveAttribute("aria-pressed", "true");
+  await expect(diffSubtabs.getByRole("button", { name: /Git/ }).first()).toHaveAttribute("aria-pressed", "false");
+
+  await diffSubtabs.getByRole("button").nth(1).click();
+  await expect(diffSubtabs.getByRole("button", { name: /Agent/ }).first()).toHaveAttribute("aria-pressed", "false");
+  await expect(diffSubtabs.getByRole("button", { name: /Git/ }).first()).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText("src/main.rs").first()).toBeVisible();
   await expect(page.getByText("new git line")).toBeVisible();
 
-  await page.locator(".diff-subtabs").getByRole("button").nth(2).click();
+  await diffSubtabs.getByRole("button").nth(2).click();
+  await expect(diffSubtabs.getByRole("button", { name: /Agent\/Git/ })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText("Changed-file reconciliation")).toBeVisible();
   const reconciliationCounts = page.locator(".agent-git-counts");
   await expect(reconciliationCounts.getByText("1 agent", { exact: true })).toBeVisible();
@@ -212,6 +227,25 @@ test("Agent detail find covers chat plus side panel diff without corrupting text
   await expect(page.locator(".pf-side-panel")).toContainText("new needle agent note");
 
   await page.getByRole("button", { name: "Close side page" }).click();
+  await expect(page.locator(".pf-side-panel")).toHaveCount(0);
+});
+
+test("opening a side panel tab as the main tab closes the duplicate side panel", async ({ page }) => {
+  const daemon = agentDetailDaemon();
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openAgent(page, /Agent detail/);
+  const tabs = page.locator(".pf-agent-tabs");
+  const diffTab = tabs.getByRole("button", { name: /Diff/ });
+
+  await diffTab.click({ modifiers: ["Meta"] });
+  await expect(page.locator(".pf-side-panel")).toBeVisible();
+  await expect(page.locator(".pf-side-head")).toContainText("Diff");
+
+  await diffTab.click();
+
+  await expect(page.locator(".pf-agent-detail-body")).toContainText("new needle agent note");
   await expect(page.locator(".pf-side-panel")).toHaveCount(0);
 });
 

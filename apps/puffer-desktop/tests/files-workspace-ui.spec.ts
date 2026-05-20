@@ -98,6 +98,55 @@ function makePdfBase64(text: string): string {
   return Buffer.from(pdf, "utf8").toString("base64");
 }
 
+function makeLegacyOfficeBase64(text: string): string {
+  return Buffer.concat([
+    Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]),
+    Buffer.from("Puffer legacy Office fixture", "utf8"),
+    Buffer.from(text, "utf16le")
+  ]).toString("base64");
+}
+
+function makeRtfDocBase64(...paragraphs: string[]): string {
+  const escapeRtf = (value: string) => value.replace(/[\\{}]/g, "\\$&");
+  return Buffer.from(
+    `{\\rtf1\\ansi{\\fonttbl{\\f0 Arial;}}\\f0\\fs24 ${paragraphs.map(escapeRtf).join("\\par ")}}`,
+    "utf8"
+  ).toString("base64");
+}
+
+function makeHtmlDocBase64(html: string): string {
+  return Buffer.from(html, "utf8").toString("base64");
+}
+
+function makeLargeLegacyOfficeBase64(text: string): string {
+  return Buffer.concat([
+    Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]),
+    Buffer.alloc(300_000, 0),
+    Buffer.from(text, "utf16le")
+  ]).toString("base64");
+}
+
+async function expectCanvasHasInk(page: Page, selector: string): Promise<void> {
+  const canvas = page.locator(selector);
+  await expect(canvas).toBeVisible();
+  await expect.poll(async () =>
+    canvas.evaluate((node: HTMLCanvasElement) => {
+      const context = node.getContext("2d");
+      if (!context || node.width === 0 || node.height === 0) return 0;
+      const pixels = context.getImageData(0, 0, node.width, node.height).data;
+      let nonWhite = 0;
+      for (let offset = 0; offset < pixels.length; offset += 16) {
+        const red = pixels[offset];
+        const green = pixels[offset + 1];
+        const blue = pixels[offset + 2];
+        const alpha = pixels[offset + 3];
+        if (alpha > 0 && (red < 248 || green < 248 || blue < 248)) nonWhite += 1;
+      }
+      return nonWhite;
+    })
+  ).toBeGreaterThan(25);
+}
+
 function makeZipBase64(entries: Record<string, string>): string {
   const localParts: Buffer[] = [];
   const centralParts: Buffer[] = [];
@@ -186,6 +235,52 @@ function seedPreviewFiles(daemon: FakeDaemon): void {
   });
   daemon.seedBinaryFile("/tmp/puffer/tasks.xlsx", xlsx);
   daemon.seedBinaryFile("/tmp/puffer/sample.pdf", makePdfBase64("Puffer PDF preview"));
+  daemon.seedFile(
+    "/tmp/puffer/ascii-sniffed.pdf",
+    Buffer.from(makePdfBase64("ASCII sniffed PDF preview"), "base64").toString("utf8")
+  );
+  daemon.seedBinaryFile("/tmp/puffer/old-plan.doc", makeLargeLegacyOfficeBase64("Legacy Word agenda"));
+  daemon.seedBinaryFile("/tmp/puffer/template.dot", makeLegacyOfficeBase64("Legacy Word template"));
+  daemon.seedFile(
+    "/tmp/puffer/standalone.rtf",
+    "{\\rtf1\\ansi Standalone RTF agenda\\par RTF follow-up}"
+  );
+  daemon.seedBinaryFile(
+    "/tmp/puffer/native-old-word.doc",
+    makeLegacyOfficeBase64("garbled fallback"),
+    undefined,
+    ["Native textutil Word agenda", "Native textutil follow-up"]
+  );
+  daemon.seedBinaryFile(
+    "/tmp/puffer/styled-old-word.doc",
+    makeLegacyOfficeBase64("unstyled fallback"),
+    undefined,
+    ["Styled legacy Word heading", "Italic class note"],
+    [
+      "<html><head><style>",
+      "p.p1 {font-weight: bold; text-align: center; margin: 0px 0px 12px 0px;}",
+      "span.s1 {font-style: italic; color: #334155;}",
+      "</style></head><body>",
+      '<p class="p1">Styled legacy Word heading</p>',
+      '<p><span class="s1">Italic class note</span></p>',
+      "</body></html>"
+    ].join("")
+  );
+  daemon.seedBinaryFile(
+    "/tmp/puffer/old-deck.ppt",
+    makeLegacyOfficeBase64("Legacy PowerPoint agenda")
+  );
+  daemon.seedBinaryFile("/tmp/puffer/old-budget.xls", makeLegacyOfficeBase64("Legacy Excel budget"));
+  daemon.seedBinaryFile(
+    "/tmp/puffer/old-rtf.doc",
+    makeRtfDocBase64("Legacy RTF agenda", "Second RTF paragraph")
+  );
+  daemon.seedBinaryFile(
+    "/tmp/puffer/old-html.doc",
+    makeHtmlDocBase64(
+      "<!doctype html><html><body><h1>Legacy HTML agenda</h1><p>Owner: Otter</p></body></html>"
+    )
+  );
 }
 
 test("Files tab close button works from the keyboard", async ({ page }) => {
@@ -199,10 +294,58 @@ test("Files tab close button works from the keyboard", async ({ page }) => {
   const libTab = page.getByRole("tab", { name: /lib\.rs/ });
   await expect(libTab).toBeVisible();
 
-  await libTab.getByRole("button", { name: "Close lib.rs" }).focus();
+  await libTab.getByRole("button", { name: "Close src/lib.rs" }).focus();
   await page.keyboard.press("Enter");
 
   await expect(page.getByRole("tab", { name: /lib\.rs/ })).toHaveCount(0);
+});
+
+test("Files tab close controls include paths for duplicate file names", async ({ page }) => {
+  const duplicatePath = "/tmp/puffer/tests/main.rs";
+  const daemon = new FakeDaemon();
+  daemon.seedFile(duplicatePath, "fn duplicate_main() {}\n");
+  daemon.setFileTabs(
+    [
+      { path: "/tmp/puffer/src/main.rs", pinned: true },
+      { path: duplicatePath, pinned: true },
+      { path: "/tmp/puffer/src/lib.rs", pinned: true }
+    ],
+    "/tmp/puffer/src/main.rs"
+  );
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openRegressionAgent(page);
+  await openFilesPanel(page);
+
+  await expect(page.getByRole("button", { name: "Close main.rs", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Close src/main.rs", exact: true })).toHaveCount(1);
+  const closeDuplicate = page.getByRole("button", { name: "Close tests/main.rs", exact: true });
+  await expect(closeDuplicate).toHaveCount(1);
+  await closeDuplicate.click();
+
+  await expect(page.getByRole("button", { name: "Close tests/main.rs", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Close src/main.rs", exact: true })).toHaveCount(1);
+});
+
+test("Files directory rows expose expand and collapse state", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openRegressionAgent(page);
+  await openFilesPanel(page);
+
+  const srcDir = page.locator(".tree-body").getByRole("button", { name: /^src$/ });
+  await expect(srcDir).toHaveAttribute("aria-expanded", "false");
+
+  await srcDir.click();
+  await expect(srcDir).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator(".tree-body").getByRole("button", { name: "main.rs" })).toBeVisible();
+
+  await srcDir.click();
+  await expect(srcDir).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator(".tree-body").getByRole("button", { name: "main.rs" })).toHaveCount(0);
 });
 
 test("Files tab saves text edits through the daemon", async ({ page }) => {
@@ -238,6 +381,14 @@ test("Files tab saves text edits through the daemon", async ({ page }) => {
 test("Files tab previews common document and data formats", async ({ page }) => {
   const daemon = new FakeDaemon();
   seedPreviewFiles(daemon);
+  const pdfRendererRequests: string[] = [];
+  page.on("request", (request) => {
+    const url = request.url();
+    if (url.includes("pdfjs-dist") || url.includes("pdf.worker")) pdfRendererRequests.push(url);
+  });
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "DecompressionStream", { value: undefined, configurable: true });
+  });
   await daemon.install(page);
   await daemon.open(page);
 
@@ -251,13 +402,38 @@ test("Files tab previews common document and data formats", async ({ page }) => 
   await page.getByRole("button", { name: "locations.csv" }).click();
   await expect(page.getByLabel("CSV preview")).toContainText("Library");
   await expect(page.getByLabel("CSV preview")).toContainText("Cafe");
+  expect(pdfRendererRequests).toHaveLength(0);
+
+  await page.evaluate(() => {
+    Object.defineProperty(Promise, "withResolvers", { value: undefined, configurable: true });
+    class BlockedWorker {
+      constructor() {
+        throw new Error("Worker constructors are blocked in this regression");
+      }
+    }
+    Object.defineProperty(window, "Worker", { value: BlockedWorker, configurable: true });
+  });
 
   await page.getByRole("button", { name: "sample.pdf" }).click();
   await expect(page.getByLabel("PDF preview")).toBeVisible();
-  await expect(page.locator("object.pdf-preview")).toHaveAttribute(
-    "data",
-    /^data:application\/pdf;base64,/
+  await daemon.waitForRequest(
+    "read_file",
+    (request) => request.params.path === "/tmp/puffer/sample.pdf" && request.params.maxBytes === 24 * 1024 * 1024
   );
+  await expectCanvasHasInk(page, 'canvas[aria-label="PDF page 1"]');
+  await expect(page.getByLabel("PDF text fallback")).toContainText("Puffer PDF preview");
+  expect(pdfRendererRequests.length).toBeGreaterThan(0);
+
+  await page.getByRole("button", { name: "ascii-sniffed.pdf" }).click();
+  await expect(page.getByLabel("PDF preview")).toBeVisible();
+  await daemon.waitForRequest(
+    "read_file",
+    (request) =>
+      request.params.path === "/tmp/puffer/ascii-sniffed.pdf" &&
+      request.params.maxBytes === 24 * 1024 * 1024
+  );
+  await expectCanvasHasInk(page, 'canvas[aria-label="PDF page 1"]');
+  await expect(page.getByLabel("PDF text fallback")).toContainText("ASCII sniffed PDF preview");
 
   await page.getByRole("button", { name: "brief.docx" }).click();
   await expect(page.getByLabel("DOCX preview")).toContainText("Quarterly planning note");
@@ -270,6 +446,89 @@ test("Files tab previews common document and data formats", async ({ page }) => 
   await expect(page.getByLabel("Excel preview")).toContainText("Tasks");
   await expect(page.getByLabel("Excel preview")).toContainText("Otter");
   await expect(page.getByLabel("Excel preview")).toContainText("Ready");
+
+  await page.getByRole("button", { name: "old-plan.doc" }).click();
+  await daemon.waitForRequest(
+    "read_file",
+    (request) => request.params.path === "/tmp/puffer/old-plan.doc" && request.params.maxBytes === 24 * 1024 * 1024
+  );
+  await expect(page.getByLabel("Legacy Word preview")).toContainText("Legacy Word agenda");
+
+  await page.getByRole("button", { name: "template.dot" }).click();
+  await expect(page.getByLabel("Legacy Word preview")).toContainText("Legacy Word template");
+
+  await page.getByRole("button", { name: "standalone.rtf" }).click();
+  await expect(page.getByLabel("Legacy Word preview")).toContainText("Standalone RTF agenda");
+  await expect(page.getByLabel("Legacy Word preview")).toContainText("RTF follow-up");
+
+  await page.getByRole("button", { name: "native-old-word.doc" }).click();
+  await expect(page.getByLabel("Legacy Word preview")).toContainText("Native textutil Word agenda");
+  await expect(page.getByLabel("Legacy Word preview")).toContainText("Native textutil follow-up");
+
+  await page.getByRole("button", { name: "styled-old-word.doc" }).click();
+  const styledPreview = page.getByLabel("Legacy Word preview");
+  const styledHeading = styledPreview.getByText("Styled legacy Word heading");
+  const styledNote = styledPreview.getByText("Italic class note");
+  await expect(styledHeading).toBeVisible();
+  await expect(styledNote).toBeVisible();
+  await expect(styledHeading).toHaveCSS("text-align", "center");
+  await expect(styledHeading).toHaveCSS("font-weight", /^(700|bold)$/);
+  await expect(styledNote).toHaveCSS("font-style", "italic");
+
+  await page.getByRole("button", { name: "old-deck.ppt" }).click();
+  await expect(page.getByLabel("Legacy PowerPoint preview")).toContainText(
+    "Legacy PowerPoint agenda"
+  );
+
+  await page.getByRole("button", { name: "old-budget.xls" }).click();
+  await expect(page.getByLabel("Legacy Excel preview")).toContainText("Legacy Excel budget");
+
+  await page.getByRole("button", { name: "old-rtf.doc" }).click();
+  await expect(page.getByLabel("Legacy Word preview")).toContainText("Legacy RTF agenda");
+  await expect(page.getByLabel("Legacy Word preview")).toContainText("Second RTF paragraph");
+
+  await page.getByRole("button", { name: "old-html.doc" }).click();
+  await expect(page.getByLabel("Legacy Word preview")).toContainText("Legacy HTML agenda");
+  await expect(page.getByLabel("Legacy Word preview")).toContainText("Owner: Otter");
+});
+
+test("Files tab shows PDF text fallback while renderer assets are still loading", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  seedPreviewFiles(daemon);
+  let delayedRendererRequests = 0;
+  await page.route("**/*pdfjs-dist*", async (route) => {
+    delayedRendererRequests += 1;
+    await new Promise((resolve) => setTimeout(resolve, 1_500));
+    await route.abort();
+  });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openRegressionAgent(page);
+  await openFilesPanel(page);
+
+  await page.getByRole("button", { name: "sample.pdf" }).click();
+  await expect(page.getByText("Loading PDF renderer...")).toBeVisible();
+  await expect(page.getByLabel("PDF text fallback")).toContainText("Puffer PDF preview", {
+    timeout: 700
+  });
+  expect(delayedRendererRequests).toBeGreaterThan(0);
+});
+
+test("Files tab shows PDF text fallback when renderer assets fail to load", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  seedPreviewFiles(daemon);
+  await page.route("**/*pdfjs-dist*", (route) => route.abort());
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openRegressionAgent(page);
+  await openFilesPanel(page);
+
+  await page.getByRole("button", { name: "sample.pdf" }).click();
+  await expect(page.getByLabel("PDF preview")).toBeVisible();
+  await expect(page.getByText("PDF renderer failed:")).toBeVisible();
+  await expect(page.getByLabel("PDF text fallback")).toContainText("Puffer PDF preview");
 });
 
 test("Files tab keeps raw editing available for previewed text files", async ({ page }) => {

@@ -54,6 +54,12 @@
     generation: number;
   };
 
+  type BrowserCommandKind = "navigate" | "history" | "reload";
+
+  type PendingBrowserCommand = BrowserCommandTarget & {
+    kind: BrowserCommandKind;
+  };
+
   type ClosingTabTarget = {
     sessionId: string;
     tabId: string;
@@ -80,6 +86,7 @@
   let showDevtools = $state(false);
   let devtoolsView = $state<"console" | "network">("console");
   let closingTabs = $state<ClosingTabTarget[]>([]);
+  let pendingBrowserCommands = $state<PendingBrowserCommand[]>([]);
 
   let disposers: Array<() => void> = [];
   let activeDisposers: Array<() => void> = [];
@@ -113,7 +120,17 @@
   let frameDecodeInFlight = false;
 
   let activeTab = $derived(tabs.find((tab) => tab.id === activeTabId) ?? tabs[0]);
-  let browserControlsEnabled = $derived(Boolean(activeTab && connected));
+  let browserCommandPending = $derived(
+    Boolean(
+      activeTab &&
+        pendingBrowserCommands.some(
+          (target) =>
+            target.generation === sessionGeneration &&
+            target.backendSessionId === activeBackendSessionId()
+        )
+    )
+  );
+  let browserControlsEnabled = $derived(Boolean(activeTab && connected && !browserCommandPending));
   let activeDevtools = $derived(activeTab?.devtools ?? []);
   let consoleEvents = $derived(activeDevtools.filter((item) => item.kind === "console"));
   let networkEvents = $derived(activeDevtools.filter((item) => item.kind === "network"));
@@ -122,7 +139,7 @@
     if (!viewport || !canvas) return;
     mounted = true;
     if (!isDaemonReachable()) {
-      status = "Browser is available when connected to the Corbina backend.";
+      status = "Browser is available when connected to the Puffer backend.";
       error = "No backend connection is configured for this preview.";
       return;
     }
@@ -217,7 +234,6 @@
     if (state.tabs.length === 0) {
       if (!options.allowEmpty) return;
       tabStateVersion += 1;
-      pendingNavigationSessions.clear();
       tabs = [];
       activeTabId = "";
       nextTabNumber = 2;
@@ -229,6 +245,10 @@
       title = "";
       currentUrl = "about:blank";
       urlDraft = "about:blank";
+      showDevtools = false;
+      devtoolsView = "console";
+      pendingBrowserCommands = [];
+      pendingNavigationSessions.clear();
       resetPointer(activePointerId ?? undefined);
       disposeActiveSubscriptions();
       clearCanvas();
@@ -256,8 +276,9 @@
     activeRootSessionId = nextSessionId;
     activeEventSessionId = "";
     disposeSessionSubscriptions();
-    clearCursorTimer();
+    pendingBrowserCommands = [];
     pendingNavigationSessions.clear();
+    clearCursorTimer();
     resetPointer(activePointerId ?? undefined);
     const restored = loadSavedTabsFor(nextSessionId);
     tabs = restored;
@@ -487,6 +508,29 @@
     );
   }
 
+  function isBrowserCommandPending(target: BrowserCommandTarget): boolean {
+    return pendingBrowserCommands.some(
+      (item) =>
+        item.generation === target.generation &&
+        item.backendSessionId === target.backendSessionId
+    );
+  }
+
+  function beginBrowserCommand(target: BrowserCommandTarget, kind: BrowserCommandKind): boolean {
+    if (isBrowserCommandPending(target)) return false;
+    pendingBrowserCommands = [...pendingBrowserCommands, { ...target, kind }];
+    return true;
+  }
+
+  function finishBrowserCommand(target: BrowserCommandTarget, kind: BrowserCommandKind) {
+    pendingBrowserCommands = pendingBrowserCommands.filter(
+      (item) =>
+        item.kind !== kind ||
+        item.generation !== target.generation ||
+        item.backendSessionId !== target.backendSessionId
+    );
+  }
+
   function tabIdForBackendSession(backendId: string): string | null {
     return tabs.find((tab) => tab.backendSessionId === backendId)?.id ?? null;
   }
@@ -508,22 +552,30 @@
 
   function runHistory(direction: "back" | "forward") {
     const target = activeCommandTarget();
-    if (!target) return;
+    if (!target || !beginBrowserCommand(target, "history")) return;
     markNavigationPending(target);
-    void browserHistory(target.backendSessionId, direction).catch((err) => {
-      clearNavigationPending(target.backendSessionId);
-      reportCommandError(target, err);
-    });
+    void browserHistory(target.backendSessionId, direction)
+      .catch((err) => {
+        clearNavigationPending(target.backendSessionId);
+        reportCommandError(target, err);
+      })
+      .finally(() => {
+        finishBrowserCommand(target, "history");
+      });
   }
 
   function reloadActiveTab() {
     const target = activeCommandTarget();
-    if (!target) return;
+    if (!target || !beginBrowserCommand(target, "reload")) return;
     markNavigationPending(target);
-    void browserReload(target.backendSessionId).catch((err) => {
-      clearNavigationPending(target.backendSessionId);
-      reportCommandError(target, err);
-    });
+    void browserReload(target.backendSessionId)
+      .catch((err) => {
+        clearNavigationPending(target.backendSessionId);
+        reportCommandError(target, err);
+      })
+      .finally(() => {
+        finishBrowserCommand(target, "reload");
+      });
   }
 
   function sendBrowserInput(event: Parameters<typeof browserInput>[1]) {
@@ -823,9 +875,13 @@
     const requestedTabId = requestedTab.id;
     const requestedBackendSessionId = requestedTab.backendSessionId || backendSessionId(requestedTabId);
     const requestedUrl = urlDraft;
-    const target = { backendSessionId: requestedBackendSessionId, generation: requestedGeneration };
+    const commandTarget = {
+      backendSessionId: requestedBackendSessionId,
+      generation: requestedGeneration
+    };
+    if (!beginBrowserCommand(commandTarget, "navigate")) return;
     error = null;
-    markNavigationPending(target);
+    markNavigationPending(commandTarget);
     try {
       updateTab(requestedTabId, {
         url: requestedUrl,
@@ -844,6 +900,8 @@
         status = "Chrome error";
         loading = false;
       }
+    } finally {
+      finishBrowserCommand(commandTarget, "navigate");
     }
   }
 
@@ -1011,9 +1069,24 @@
     }
   }
 
-  function tabTitle(tab: BrowserTab): string {
+  function fullTabTitle(tab: BrowserTab): string {
     const value = tab.title || (tab.url === "about:blank" ? tab.label : tab.url);
+    return value || tab.id;
+  }
+
+  function tabTitle(tab: BrowserTab): string {
+    const value = fullTabTitle(tab);
     return value.length > 28 ? `${value.slice(0, 25)}...` : value;
+  }
+
+  function closeTabTarget(tab: BrowserTab): string {
+    if (tab.title) return tab.title;
+    if (tab.url && tab.url !== "about:blank") return tab.url;
+    return "blank page";
+  }
+
+  function closeTabLabel(tab: BrowserTab, index: number): string {
+    return `Close tab ${index + 1}: ${closeTabTarget(tab)}`;
   }
 
   function canvasPoint(event: MouseEvent | WheelEvent): { x: number; y: number } {
@@ -1313,14 +1386,15 @@
 
 <div class="pf-browser-pane">
   <div class="pf-browser-tabs" role="tablist" aria-label="Browser tabs">
-    {#each tabs as tab (tab.id)}
+    {#each tabs as tab, index (tab.id)}
+      {@const closeLabel = closeTabLabel(tab, index)}
       <div
         class="pf-browser-tab"
         class:active={tab.id === activeTabId}
         role="tab"
         tabindex="0"
         aria-selected={tab.id === activeTabId}
-        title={tab.title || tab.url}
+        title={fullTabTitle(tab)}
         onclick={() => selectTab(tab.id)}
         onkeydown={(event) => {
           if (event.key === "Enter" || event.key === " ") {
@@ -1338,8 +1412,8 @@
         <button
           class="close"
           type="button"
-          title="Close tab"
-          aria-label="Close tab"
+          title={closeLabel}
+          aria-label={closeLabel}
           disabled={isClosingTab(sessionId, tab.id)}
           onclick={(event) => closeTab(tab.id, event)}
         >

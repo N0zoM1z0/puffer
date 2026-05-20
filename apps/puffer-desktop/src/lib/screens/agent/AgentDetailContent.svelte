@@ -29,6 +29,8 @@
     timeline: TimelineItem[];
     pendingPermissions: PermissionTimelineItem[];
     pendingQuestions: UserQuestionTimelineItem[];
+    resolvingPermissionIds?: string[];
+    resolvingQuestionIds?: string[];
     loading: boolean;
     displayName: string;
     pufferState: AgentState;
@@ -60,6 +62,8 @@
     timeline,
     pendingPermissions,
     pendingQuestions,
+    resolvingPermissionIds = [],
+    resolvingQuestionIds = [],
     loading,
     displayName,
     pufferState,
@@ -146,6 +150,8 @@
       timeline={timeline}
       pendingPermissions={pendingPermissions}
       pendingQuestions={pendingQuestions}
+      resolvingPermissionIds={resolvingPermissionIds}
+      resolvingQuestionIds={resolvingQuestionIds}
       loading={loading}
       turnRunning={turnRunning}
       turnCancelable={turnCancelable}
@@ -162,22 +168,36 @@
       onDraftChange={onDraftChange}
     />
   {:else if tab === "diff"}
-    <div class="diff-subtabs">
-      <button class="diff-subtab" class:on={diffTab === "agent"} onclick={() => (diffTab = "agent")}>
+    <div class="diff-subtabs" role="group" aria-label="Diff sources">
+      <button
+        type="button"
+        class="diff-subtab"
+        class:on={diffTab === "agent"}
+        aria-pressed={diffTab === "agent"}
+        onclick={() => (diffTab = "agent")}
+      >
         <Icon name="sparkles" size={11} />Agent
         {#if agentDiff.files.length > 0}
           <span class="pf-agent-tab-badge">{agentDiff.files.length}</span>
         {/if}
       </button>
-      <button class="diff-subtab" class:on={diffTab === "git"} onclick={() => (diffTab = "git")}>
+      <button
+        type="button"
+        class="diff-subtab"
+        class:on={diffTab === "git"}
+        aria-pressed={diffTab === "git"}
+        onclick={() => (diffTab = "git")}
+      >
         <Icon name="git" size={11} />Git
         {#if divergence.gitTotal > 0}
           <span class="pf-agent-tab-badge">{divergence.gitTotal}</span>
         {/if}
       </button>
       <button
+        type="button"
         class="diff-subtab"
         class:on={diffTab === "divergence"}
+        aria-pressed={diffTab === "divergence"}
         onclick={() => (diffTab = "divergence")}
         title={divergenceCount > 0 ? "Agent and git disagree on which files changed" : "Agent and git agree"}
       >

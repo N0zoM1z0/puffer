@@ -222,6 +222,34 @@ test("workspace search filters projects and agents", async ({ page }) => {
   await expect(workspace.getByText("Beta browser audit")).toBeVisible();
 });
 
+test("workspace search includes session notes in history results", async ({ page }) => {
+  const daemon = new FakeDaemon({
+    sessions: [
+      {
+        sessionId: "session-note-history",
+        displayName: "Workspace note target",
+        title: "Workspace note target",
+        cwd: "/tmp/puffer-note-search",
+        folderPath: "/tmp/puffer-note-search",
+        updatedAtMs: baseTime,
+        createdAtMs: baseTime - 60_000,
+        eventCount: 1,
+        note: "Manual approval before browser replay"
+      }
+    ]
+  });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByLabel("Search workspace").fill("manual approval");
+
+  const project = page.locator(".pf-pw-project").filter({ hasText: "puffer-note-search" });
+  await expect(project.getByText("Workspace note target")).toBeVisible();
+  await expect(
+    page.getByLabel("Session history").getByRole("button", { name: /Workspace note target/ })
+  ).toBeVisible();
+});
+
 test("workspace project rows collapse and expand their session list", async ({ page }) => {
   const daemon = new FakeDaemon({
     sessions: [
@@ -864,6 +892,34 @@ test("sidebar keeps full session titles for resizable space", async ({ page }) =
   await expect(title).toHaveText(longTitle);
 });
 
+test("workspace agent cards keep full session titles for responsive ellipsis", async ({ page }) => {
+  const longTitle =
+    "Long workspace browser investigation title that should remain complete in the DOM and only ellipsize visually when space runs out";
+  const daemon = new FakeDaemon({
+    sessions: [
+      {
+        sessionId: "session-long-project-card-title",
+        displayName: longTitle,
+        title: longTitle,
+        cwd: "/tmp/puffer-long-card",
+        folderPath: "/tmp/puffer-long-card",
+        updatedAtMs: baseTime,
+        createdAtMs: baseTime - 60_000,
+        activityStatus: "running"
+      }
+    ]
+  });
+  await daemon.install(page);
+  await daemon.open(page);
+
+  const project = page.locator(".pf-pw-project").filter({ hasText: "puffer-long-card" });
+  const agent = project.locator(".pf-pw-agent");
+
+  await expect(agent.locator(".title")).toHaveText(longTitle);
+  await expect(agent).toHaveAttribute("type", "button");
+  await expect(agent).toHaveAttribute("title", new RegExp(`^${longTitle} - Running -`));
+});
+
 test("running daemon sessions keep the composer from starting another turn", async ({ page }) => {
   const daemon = new FakeDaemon({
     sessions: [
@@ -898,8 +954,12 @@ test("running daemon sessions keep the composer from starting another turn", asy
   expect(daemon.requests.filter((request) => request.method === "run_agent_turn")).toHaveLength(0);
 });
 
-test("project memory edit control is disabled until file editing is wired", async ({ page }) => {
+test("project memory file can be loaded and edited", async ({ page }) => {
   const daemon = new FakeDaemon();
+  daemon.seedFile(
+    "/tmp/puffer/.puffer/memory/project.md",
+    "Initial project memory body.\n\nKeep the browser regression notes close."
+  );
   await daemon.install(page);
   await daemon.open(page);
 
@@ -907,5 +967,17 @@ test("project memory edit control is disabled until file editing is wired", asyn
   await page.getByRole("button", { name: /Memory/ }).click();
 
   const memoryDetail = page.locator(".pf-pmem-detail");
-  await expect(memoryDetail.getByRole("button", { name: "Edit" })).toBeDisabled();
+  await expect(memoryDetail.getByText("Initial project memory body.")).toBeVisible();
+  await expect(memoryDetail.getByRole("button", { name: "Edit" })).toBeEnabled();
+
+  await memoryDetail.getByRole("button", { name: "Edit" }).click();
+  await memoryDetail.getByLabel("Memory file content").fill("Updated memory from the UI.");
+  await memoryDetail.getByRole("button", { name: "Save" }).click();
+
+  await expect(memoryDetail.getByText("Updated memory from the UI.")).toBeVisible();
+  const writes = daemon.requests.filter((request) => request.method === "write_file");
+  expect(writes.at(-1)?.params).toMatchObject({
+    path: "/tmp/puffer/.puffer/memory/project.md",
+    content: "Updated memory from the UI."
+  });
 });

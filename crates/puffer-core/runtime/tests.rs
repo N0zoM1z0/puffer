@@ -658,6 +658,7 @@ fn build_codex_openai_request_body_matches_codex_shape() {
     let state = state();
     let body = build_codex_openai_request_body(
         &state,
+        OPENAI_CHATGPT_BASE_URL,
         "gpt-5",
         "system instructions",
         Value::String("hello".to_string()),
@@ -687,6 +688,7 @@ fn build_codex_openai_request_body_supports_xhigh_effort() {
     state.effort_level = "xhigh".to_string();
     let body = build_codex_openai_request_body(
         &state,
+        OPENAI_CHATGPT_BASE_URL,
         "gpt-5",
         "",
         Value::String("hello".to_string()),
@@ -720,6 +722,7 @@ fn build_codex_openai_request_body_uses_priority_tier_for_fast_mode() {
     }];
     let body = build_codex_openai_request_body(
         &state,
+        OPENAI_CHATGPT_BASE_URL,
         "gpt-5",
         "",
         Value::String("hello".to_string()),
@@ -742,6 +745,7 @@ fn build_codex_openai_request_body_includes_native_structured_output_config() {
     let state = state();
     let body = build_codex_openai_request_body(
         &state,
+        OPENAI_CHATGPT_BASE_URL,
         "gpt-5",
         "",
         Value::String("hello".to_string()),
@@ -993,7 +997,9 @@ fn parse_openai_sse_response_streaming_emits_text_deltas() {
 
 #[test]
 fn execute_user_prompt_refreshes_openai_oauth_after_401() {
-    let _guard = refresh_env_lock().lock().unwrap();
+    let _guard = refresh_env_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let address = listener.local_addr().unwrap();
     let requests = Arc::new(Mutex::new(Vec::new()));

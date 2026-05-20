@@ -346,6 +346,52 @@ test("sends Browser tab navigation through the daemon bridge", async ({ page }) 
   await expect(page.getByLabel("URL")).toHaveValue("https://example.com");
 });
 
+test("Browser toolbar ignores repeated commands while a request is in flight", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openRegressionAgent(page);
+  await openAgentPanel(page, "Browser");
+  await daemon.waitForRequest("browser_open");
+
+  daemon.delayResponse(
+    "browser_navigate",
+    (request) => request.params.sessionId === "session-browser:browser:tab-1",
+    250
+  );
+  await page.getByLabel("URL").fill("example.com");
+  await page.locator(".pf-browser-toolbar").evaluate((form) => {
+    form.dispatchEvent(new SubmitEvent("submit", { bubbles: true, cancelable: true }));
+    form.dispatchEvent(new SubmitEvent("submit", { bubbles: true, cancelable: true }));
+  });
+
+  await daemon.waitForRequest("browser_navigate");
+  await expect(page.getByLabel("URL")).toBeDisabled();
+  await expect.poll(() =>
+    daemon.requests.filter((request) => request.method === "browser_navigate").length
+  ).toBe(1);
+  await expect(page.getByLabel("URL")).toBeEnabled();
+
+  daemon.delayResponse(
+    "browser_reload",
+    (request) => request.params.sessionId === "session-browser:browser:tab-1",
+    250
+  );
+  const reload = page.locator(".pf-browser-toolbar").getByRole("button", { name: "Reload" });
+  await reload.evaluate((button) => {
+    (button as HTMLButtonElement).click();
+    (button as HTMLButtonElement).click();
+  });
+
+  await daemon.waitForRequest("browser_reload");
+  await expect(reload).toBeDisabled();
+  await expect.poll(() =>
+    daemon.requests.filter((request) => request.method === "browser_reload").length
+  ).toBe(1);
+  await expect(reload).toBeEnabled();
+});
+
 test("late Browser navigation failures stay scoped to the submitted tab", async ({ page }) => {
   const daemon = new FakeDaemon();
   await daemon.install(page);
@@ -750,7 +796,7 @@ test("late Browser new-tab responses do not resurrect cleared tabs", async ({ pa
   await expect(page.locator(".pf-browser-status")).toHaveText("No pages");
 });
 
-test("Browser tab close control is a native button", async ({ page }) => {
+test("Browser tab close controls name the exact tab they target", async ({ page }) => {
   const daemon = new FakeDaemon();
   await daemon.install(page);
   await daemon.open(page);
@@ -765,9 +811,10 @@ test("Browser tab close control is a native button", async ({ page }) => {
     candidate.params.action === "open" && candidate.params.tabId === "tab-2"
   );
 
-  const closeControls = page.getByRole("button", { name: "Close tab" });
+  await expect(page.getByRole("button", { name: "Close tab", exact: true })).toHaveCount(0);
+  const closeControls = page.getByRole("button", { name: /^Close tab \d+:/ });
   await expect(closeControls.first()).toHaveJSProperty("tagName", "BUTTON");
-  await closeControls.nth(1).click();
+  await page.getByRole("button", { name: "Close tab 2: blank page" }).click();
   await expect(page.locator(".pf-browser-tab")).toHaveCount(1);
 });
 
@@ -809,11 +856,14 @@ test("Browser tab list event can clear stale tabs", async ({ page }) => {
     request.params.sessionId === "session-browser:browser:tab-1"
   );
   await expect(page.locator(".pf-browser-tab")).toHaveCount(1);
+  await page.getByRole("button", { name: "DevTools" }).click();
+  await expect(page.locator(".pf-browser-devtools")).toBeVisible();
 
   daemon.emit("browser:session-browser:tabs", { activeTabId: null, tabs: [] });
 
   await expect(page.locator(".pf-browser-tab")).toHaveCount(0);
   await expect(page.locator(".pf-browser-status")).toHaveText("No pages");
+  await expect(page.locator(".pf-browser-devtools")).toHaveCount(0);
 });
 
 test("Browser paste does not send input after tabs are cleared", async ({ page }) => {
@@ -2000,6 +2050,6 @@ test("Files tab close controls are native buttons", async ({ page }) => {
 
   const closeControls = page.getByRole("button", { name: /Close .*\.rs/ });
   await expect(closeControls.first()).toHaveJSProperty("tagName", "BUTTON");
-  await closeControls.nth(1).click();
+  await page.getByRole("button", { name: "Close src/lib.rs" }).click();
   await expect(page.getByRole("tab", { name: /lib\.rs/ })).toHaveCount(0);
 });

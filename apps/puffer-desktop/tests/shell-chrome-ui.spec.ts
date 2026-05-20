@@ -49,6 +49,12 @@ test("Tauri capability permits data drag regions to move the native window", asy
   expect(capability.permissions).toContain("core:window:allow-start-dragging");
 });
 
+test("Playwright does not reuse stale Vite servers in Codex automation", async () => {
+  const raw = await readFile("playwright.config.ts", "utf8");
+  expect(raw).toContain("process.env.CODEX_CI");
+  expect(raw).toContain("reuseExistingServer: shouldReuseExistingServer");
+});
+
 test("desktop minimum width keeps primary navigation visible", async ({ page }) => {
   const daemon = new FakeDaemon();
   await page.setViewportSize({ width: 720, height: 480 });
@@ -61,6 +67,21 @@ test("desktop minimum width keeps primary navigation visible", async ({ page }) 
   await expect(sidebar.getByRole("button", { name: "Pipelines" })).toBeVisible();
   await expect(sidebar.getByRole("button", { name: "Deployments" })).toBeVisible();
   await expect(sidebar.getByRole("button", { name: "Settings" })).toBeVisible();
+});
+
+test("desktop user-visible copy uses Puffer branding", async () => {
+  const userFacingFiles = [
+    "src/App.svelte",
+    "src/lib/screens/agent/BrowserPane.svelte",
+    "src/lib/screens/agent/FilesPane.svelte",
+    "src/lib/screens/agent/TerminalPane.svelte",
+    "src/lib/screens/workspace/ConnectProjectModal.svelte"
+  ];
+
+  for (const file of userFacingFiles) {
+    const source = await readFile(file, "utf8");
+    expect(source, file).not.toContain("Corbina");
+  }
 });
 
 test("sidebar width can be resized and persists as a local shell tweak", async ({ page }) => {
@@ -104,4 +125,33 @@ test("sidebar can open the deployments screen", async ({ page }) => {
   await expect(page.locator(".pf-dep")).toBeVisible();
   await expect(page.getByText(/environments/)).toBeVisible();
   await expect(page.getByRole("button", { name: /New deployment/ })).toBeVisible();
+});
+
+test("deployment secret reveal controls target one key and toggle their state", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  await daemon.install(page);
+  await daemon.open(page);
+
+  const sidebar = page.locator(".pf-sidebar");
+  await sidebar.getByRole("button", { name: "Deployments" }).click();
+  await page.getByRole("button", { name: "Secrets" }).click();
+
+  const row = page.locator(".pf-dep-secrets-row").filter({ hasText: "DATABASE_URL" });
+  await expect(row).toContainText("••••••••••••••");
+  await expect(page.getByRole("button", { name: "Reveal", exact: true })).toHaveCount(0);
+
+  const revealDatabaseUrl = page.getByRole("button", { name: "Reveal DATABASE_URL", exact: true });
+  await expect(revealDatabaseUrl).toHaveCount(1);
+  await revealDatabaseUrl.click();
+
+  await expect(row).toContainText(/postgres:\/\/.*db\.puffer\.app\/prod/);
+  const hideDatabaseUrl = page.getByRole("button", { name: "Hide DATABASE_URL", exact: true });
+  await expect(hideDatabaseUrl).toHaveAttribute("aria-pressed", "true");
+  await hideDatabaseUrl.click();
+
+  await expect(row).toContainText("••••••••••••••");
+  await expect(page.getByRole("button", { name: "Reveal DATABASE_URL", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "false"
+  );
 });

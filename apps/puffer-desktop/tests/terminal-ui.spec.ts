@@ -70,6 +70,30 @@ test("Terminal decodes UTF-8 PTY output frames", async ({ page }) => {
   await expect(page.locator(".xterm-rows")).not.toContainText("ä½");
 });
 
+test("Terminal decodes UTF-8 split across PTY output frames", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: /Browser regression/ }).first().click();
+  await page.locator(".pf-agent-tabs").getByRole("button", { name: "Terminal", exact: true }).click();
+  await daemon.waitForRequest("pty_open", (request) => request.params.sessionId === "session-browser");
+  await daemon.waitForRequest("pty_replay", (request) => request.params.ptyId === "pty-1");
+
+  const bytes = Buffer.from("split 你好\n", "utf8");
+  daemon.emit("pty:pty-1:data", {
+    seq: 1,
+    data: bytes.subarray(0, 8).toString("base64")
+  });
+  daemon.emit("pty:pty-1:data", {
+    seq: 2,
+    data: bytes.subarray(8).toString("base64")
+  });
+
+  await expect(page.locator(".xterm-rows")).toContainText("split 你好");
+  await expect(page.locator(".xterm-rows")).not.toContainText("�");
+});
+
 test("late Terminal focus does not reattach a switched session", async ({ page }) => {
   const daemon = new FakeDaemon({
     sessions: [
@@ -312,6 +336,28 @@ test("Terminal close ignores repeated clicks while close is in flight", async ({
   await expect(page.getByRole("button", { name: "Close Terminal 1" })).toBeDisabled();
   await page.waitForTimeout(50);
   expect(daemon.requests.filter((request) => request.method === "pty_close")).toHaveLength(1);
+});
+
+test("Terminal tab close controls include tab titles", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await page.getByRole("button", { name: /Browser regression/ }).first().click();
+  await page.locator(".pf-agent-tabs").getByRole("button", { name: "Terminal", exact: true }).click();
+  await daemon.waitForRequest("pty_open", (request) => request.params.title === "Terminal 1");
+
+  await page.getByRole("button", { name: "New terminal" }).click();
+  await daemon.waitForRequest("pty_open", (request) => request.params.title === "Terminal 2");
+
+  await expect(page.getByRole("button", { name: "Close Terminal 1" })).toHaveAttribute(
+    "title",
+    "Close Terminal 1"
+  );
+  await expect(page.getByRole("button", { name: "Close Terminal 2" })).toHaveAttribute(
+    "title",
+    "Close Terminal 2"
+  );
 });
 
 test("Terminal close failure keeps the tab retryable", async ({ page }) => {

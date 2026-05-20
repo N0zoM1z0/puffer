@@ -32,6 +32,8 @@ type FakeFileValue =
       encoding: "base64";
       content: string;
       size: number;
+      textPreview?: string[];
+      htmlPreview?: string;
     };
 
 type TabSet = {
@@ -157,6 +159,11 @@ const fileTabs = [
   { path: "/tmp/puffer/src/lib.rs", pinned: true }
 ];
 
+type FakeFileTab = {
+  path: string;
+  pinned: boolean;
+};
+
 function defaultFileContent(path: string): string {
   return path.endsWith("lib.rs") ? "pub fn fixture() {}\n" : "fn main() {}\n";
 }
@@ -243,6 +250,7 @@ export class FakeDaemon {
   private readonly details = new Map<string, SessionDetailOverrides>();
   private groupedSessionFilter: ((metadata: JsonRecord) => boolean) | null = null;
   private readonly files = new Map<string, FakeFileValue>();
+  private fileTabsState: JsonRecord | null = null;
   private readonly lspLocations = new Map<string, string>();
   private readonly providerModels: Record<string, JsonRecord[]>;
   private readonly providerSummaries: JsonRecord[] | null;
@@ -363,11 +371,26 @@ export class FakeDaemon {
     this.files.set(path, content);
   }
 
-  seedBinaryFile(path: string, contentBase64: string, size?: number): void {
+  setFileTabs(tabs: FakeFileTab[], activePath: string | null = tabs[0]?.path ?? null): void {
+    this.fileTabsState = {
+      tabs: tabs.map((tab) => ({ ...tab })),
+      activePath
+    };
+  }
+
+  seedBinaryFile(
+    path: string,
+    contentBase64: string,
+    size?: number,
+    textPreview?: string[],
+    htmlPreview?: string
+  ): void {
     this.files.set(path, {
       encoding: "base64",
       content: contentBase64,
-      size: size ?? Math.ceil((contentBase64.length * 3) / 4)
+      size: size ?? Math.ceil((contentBase64.length * 3) / 4),
+      ...(textPreview ? { textPreview } : {}),
+      ...(htmlPreview ? { htmlPreview } : {})
     });
   }
 
@@ -652,7 +675,7 @@ export class FakeDaemon {
       case "list_dir":
         return this.listDir(request.params);
       case "load_file_tabs":
-        return { tabs: fileTabs, activePath: fileTabs[0].path };
+        return this.fileTabsState ?? { tabs: fileTabs, activePath: fileTabs[0].path };
       case "save_file_tabs":
         return { tabs: request.params.tabs ?? [], activePath: request.params.activePath ?? null };
       case "read_file":
@@ -1208,21 +1231,31 @@ export class FakeDaemon {
     const path = String(params.path ?? "");
     const content = this.files.get(path) ?? defaultFileContent(path);
     this.files.set(path, content);
+    const maxBytesValue = Number(params.maxBytes ?? params.max_bytes ?? Number.POSITIVE_INFINITY);
+    const maxBytes = Number.isFinite(maxBytesValue) && maxBytesValue >= 0
+      ? Math.floor(maxBytesValue)
+      : Number.POSITIVE_INFINITY;
     if (typeof content !== "string") {
+      const bytes = Buffer.from(content.content, "base64");
+      const visible = maxBytes === Number.POSITIVE_INFINITY ? bytes : bytes.subarray(0, maxBytes);
       return {
         path,
         encoding: content.encoding,
-        content: content.content,
+        content: visible.toString("base64"),
         size: content.size,
-        truncated: false
+        truncated: visible.length < bytes.length,
+        ...(content.textPreview ? { textPreview: content.textPreview } : {}),
+        ...(content.htmlPreview ? { htmlPreview: content.htmlPreview } : {})
       };
     }
+    const bytes = Buffer.from(content, "utf8");
+    const visible = maxBytes === Number.POSITIVE_INFINITY ? bytes : bytes.subarray(0, maxBytes);
     return {
       path,
       encoding: "utf8",
-      content,
-      size: content.length,
-      truncated: false
+      content: visible.toString("utf8"),
+      size: bytes.length,
+      truncated: visible.length < bytes.length
     };
   }
 
