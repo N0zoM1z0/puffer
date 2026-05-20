@@ -200,3 +200,21 @@ test("Stale Browser tab list does not clear reload loading feedback", async ({ p
 
   await expect(statusBar).toContainText("Loading");
 });
+
+test("Reload loading state recovers when no browser state event follows", async ({ page }) => {
+  const daemon = new FakeDaemon();
+  await daemon.install(page);
+  await daemon.open(page);
+
+  await openBrowserAgent(page);
+  await openBrowserPane(page, daemon);
+
+  const statusBar = page.locator(".pf-browser-status");
+  await expect(statusBar).toContainText("Connected");
+
+  await page.locator("button[title='Reload']").click();
+  await daemon.waitForRequest("browser_reload");
+  await expect(statusBar).toContainText("Loading");
+
+  await expect(statusBar).toContainText("Connected", { timeout: 2_000 });
+});
