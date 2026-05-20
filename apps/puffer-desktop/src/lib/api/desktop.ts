@@ -1684,6 +1684,7 @@ export type ModelDescriptorInfo = {
   contextWindow: number;
   maxOutputTokens: number;
   supportsReasoning: boolean;
+  supportsTools?: boolean;
   isDefault?: boolean;
   thinkingOptions?: {
     id: string;
